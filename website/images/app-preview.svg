@@ -1,0 +1,118 @@
+<svg width="760" height="920" viewBox="0 0 760 920" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="screen" x1="158" y1="42" x2="602" y2="878" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FCFFF9"/>
+      <stop offset="1" stop-color="#EEF8E8"/>
+    </linearGradient>
+    <linearGradient id="primaryCard" x1="188" y1="202" x2="572" y2="394" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#68B946"/>
+      <stop offset="1" stop-color="#3F7F27"/>
+    </linearGradient>
+    <clipPath id="screenClip">
+      <rect x="158" y="42" width="444" height="836" rx="54"/>
+    </clipPath>
+    <filter id="phoneShadow" x="70" y="-30" width="620" height="1020" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="28" stdDeviation="28" flood-color="#24351F" flood-opacity=".2"/>
+    </filter>
+  </defs>
+
+  <ellipse cx="380" cy="868" rx="230" ry="36" fill="#24351F" opacity=".12"/>
+
+  <g filter="url(#phoneShadow)">
+    <rect x="138" y="18" width="484" height="884" rx="72" fill="#172217"/>
+    <rect x="158" y="42" width="444" height="836" rx="54" fill="url(#screen)"/>
+  </g>
+
+  <g clip-path="url(#screenClip)">
+    <circle cx="596" cy="70" r="122" fill="#DFF2D4" opacity=".75"/>
+    <circle cx="158" cy="384" r="160" fill="#F6E9C8" opacity=".34"/>
+    <circle cx="600" cy="790" r="190" fill="#DCEFD2" opacity=".6"/>
+
+    <rect x="304" y="62" width="152" height="18" rx="9" fill="#172217"/>
+    <circle cx="478" cy="71" r="8" fill="#2E3A2E"/>
+
+    <g transform="translate(188 112)">
+      <g>
+        <rect x="0" y="0" width="46" height="38" rx="14" fill="#FFFFFF" stroke="#BFE0B2" stroke-width="2"/>
+        <path d="M27.4 9.3C19.8 10.8 15.1 15.8 14.2 21.9C13.5 27.4 17 31.4 22.1 30.8C29.7 29.9 34.4 21.3 33.3 11.6C33.2 10.4 31.9 8.9 30.6 9C29.5 9.1 28.5 9.1 27.4 9.3Z" fill="#5FA83D"/>
+        <path d="M16.6 27.4C20.9 22.6 24.6 19.5 30.7 16.5" stroke="#F8FBF5" stroke-width="2.8" stroke-linecap="round"/>
+        <text x="58" y="25" fill="#19231A" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="900" letter-spacing="-.8">Nut<tspan fill="#5FA83D">ora</tspan></text>
+      </g>
+
+      <text x="0" y="78" fill="#5FA83D" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="900" letter-spacing="1.9">TODAY</text>
+      <text x="0" y="116" fill="#19231A" font-family="Inter, Arial, sans-serif" font-size="31" font-weight="900">1,286 kcal</text>
+      <text x="0" y="142" fill="#687266" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="700">914 kcal left for your goal</text>
+
+      <rect x="0" y="176" width="384" height="184" rx="32" fill="url(#primaryCard)"/>
+      <circle cx="318" cy="166" r="116" fill="#FFFFFF" opacity=".12"/>
+      <circle cx="360" cy="336" r="82" fill="#2E6E21" opacity=".18"/>
+
+      <text x="26" y="216" fill="#DFF9C7" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="900">Photo analysis</text>
+      <text x="26" y="265" fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="49" font-weight="900">684</text>
+      <text x="127" y="265" fill="#DFF9C7" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="850">kcal</text>
+      <text x="26" y="302" fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="900">Chicken rice bowl</text>
+      <text x="26" y="329" fill="#DFF9C7" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="750">45g protein • 18g fat • 74g carbs</text>
+
+      <g transform="translate(242 205)">
+        <rect x="0" y="0" width="106" height="106" rx="30" fill="#FFF1D7"/>
+        <circle cx="53" cy="53" r="38" fill="#F8D899"/>
+        <circle cx="39" cy="43" r="9" fill="#E7654F"/>
+        <circle cx="62" cy="38" r="8" fill="#5FA83D"/>
+        <circle cx="73" cy="58" r="9" fill="#F4AA3D"/>
+        <rect x="35" y="62" width="40" height="13" rx="6.5" fill="#C97848" transform="rotate(-11 35 62)"/>
+        <path d="M26 72C42 83 68 83 83 70" stroke="#A8643D" stroke-width="5" stroke-linecap="round"/>
+      </g>
+
+      <g transform="translate(0 390)">
+        <rect x="0" y="0" width="120" height="128" rx="24" fill="#FFFFFF" stroke="#E0E9DC"/>
+        <circle cx="34" cy="34" r="18" fill="#EEF8E8"/>
+        <text x="24" y="41" font-family="Arial" font-size="18">P</text>
+        <text x="18" y="72" fill="#687266" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="900">Protein</text>
+        <text x="18" y="102" fill="#19231A" font-family="Inter, Arial, sans-serif" font-size="27" font-weight="900">82g</text>
+
+        <rect x="132" y="0" width="120" height="128" rx="24" fill="#FFFFFF" stroke="#E0E9DC"/>
+        <circle cx="166" cy="34" r="18" fill="#FFF1D7"/>
+        <text x="158" y="41" font-family="Arial" font-size="18">F</text>
+        <text x="150" y="72" fill="#687266" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="900">Fats</text>
+        <text x="150" y="102" fill="#19231A" font-family="Inter, Arial, sans-serif" font-size="27" font-weight="900">39g</text>
+
+        <rect x="264" y="0" width="120" height="128" rx="24" fill="#FFFFFF" stroke="#E0E9DC"/>
+        <circle cx="298" cy="34" r="18" fill="#E7F0FF"/>
+        <text x="288" y="41" font-family="Arial" font-size="18">C</text>
+        <text x="282" y="72" fill="#687266" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="900">Carbs</text>
+        <text x="282" y="102" fill="#19231A" font-family="Inter, Arial, sans-serif" font-size="27" font-weight="900">146g</text>
+      </g>
+
+      <text x="0" y="562" fill="#19231A" font-family="Inter, Arial, sans-serif" font-size="23" font-weight="900">Recent meals</text>
+      <text x="312" y="562" fill="#5FA83D" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="900">See all</text>
+
+      <g transform="translate(0 584)">
+        <rect x="0" y="0" width="384" height="88" rx="25" fill="#FFFFFF" stroke="#E0E9DC"/>
+        <rect x="14" y="14" width="60" height="60" rx="18" fill="#EAF8DD"/>
+        <circle cx="44" cy="44" r="22" fill="#8FD26A"/>
+        <circle cx="34" cy="37" r="6" fill="#F35C4C"/>
+        <circle cx="50" cy="35" r="6" fill="#FFFFFF"/>
+        <circle cx="54" cy="52" r="7" fill="#3F8B3A"/>
+        <path d="M27 54C38 61 54 61 61 51" stroke="#2F7F4B" stroke-width="4" stroke-linecap="round"/>
+        <text x="92" y="30" fill="#5FA83D" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="900">DINNER</text>
+        <text x="92" y="54" fill="#19231A" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="900">Tuna green salad</text>
+        <text x="294" y="47" fill="#19231A" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="900">364</text>
+        <text x="336" y="47" fill="#687266" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="800">kcal</text>
+      </g>
+
+      <g transform="translate(0 688)">
+        <rect x="0" y="0" width="384" height="88" rx="25" fill="#FFFFFF" stroke="#E0E9DC"/>
+        <rect x="14" y="14" width="60" height="60" rx="18" fill="#FFF0D7"/>
+        <circle cx="44" cy="44" r="22" fill="#F4D39B"/>
+        <circle cx="34" cy="38" r="6" fill="#D84E5B"/>
+        <circle cx="49" cy="36" r="5" fill="#5FA83D"/>
+        <circle cx="55" cy="51" r="6" fill="#8E5D35"/>
+        <path d="M27 54C38 61 54 61 61 52" stroke="#B98555" stroke-width="4" stroke-linecap="round"/>
+        <text x="92" y="30" fill="#5FA83D" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="900">BREAKFAST</text>
+        <text x="92" y="54" fill="#19231A" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="900">Oatmeal with fruit</text>
+        <text x="294" y="47" fill="#19231A" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="900">412</text>
+        <text x="336" y="47" fill="#687266" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="800">kcal</text>
+      </g>
+    </g>
+  </g>
+</svg>

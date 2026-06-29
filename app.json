@@ -1,0 +1,71 @@
+{
+  "expo": {
+    "name": "Nutora",
+    "slug": "nutora",
+    "scheme": "nutora",
+    "version": "1.0.0",
+    "icon": "./assets/images/icon.png",
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#e9f9f2"
+    },
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "pro.nutora.app",
+      "associatedDomains": [
+        "applinks:nutora.pro"
+      ]
+    },
+    "android": {
+      "package": "pro.nutora.app",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "nutora.pro"
+            },
+            {
+              "scheme": "nutora"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#F8FAF4"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-asset",
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Nutora potrzebuje dostępu do zdjęć, aby wybrać zdjęcie posiłku do analizy.",
+          "cameraPermission": "Nutora potrzebuje dostępu do aparatu, aby zrobić zdjęcie posiłku."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Nutora potrzebuje dostępu do aparatu, aby skanować kody kreskowe produktów."
+        }
+      ],
+      "expo-notifications",
+      "@react-native-community/datetimepicker"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
