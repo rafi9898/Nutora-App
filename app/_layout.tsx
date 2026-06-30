@@ -27,7 +27,8 @@ export default function RootLayout() {
       Purchases.addCustomerInfoUpdateListener(async (info) => {
         const subState = await revenueCatService.checkSubscriptionStatus();
         if (subState) {
-          useAppStore.setState({ subscription: subState });
+          const currentSub = useAppStore.getState().subscription;
+          useAppStore.setState({ subscription: { ...subState, analysesUsed: currentSub.analysesUsed, usageMonth: currentSub.usageMonth } });
         } else {
           const currentSub = useAppStore.getState().subscription;
           if (currentSub.tier === 'premium') {
@@ -39,7 +40,8 @@ export default function RootLayout() {
       // 4. Twarde sprawdzenie ostatecznego statusu (ostateczne źródło prawdy)
       const finalSubState = await revenueCatService.checkSubscriptionStatus();
       if (finalSubState) {
-        useAppStore.setState({ subscription: finalSubState });
+        const currentSub = useAppStore.getState().subscription;
+        useAppStore.setState({ subscription: { ...finalSubState, analysesUsed: currentSub.analysesUsed, usageMonth: currentSub.usageMonth } });
       } else {
         const currentSub = useAppStore.getState().subscription;
         if (currentSub.tier === 'premium') {
