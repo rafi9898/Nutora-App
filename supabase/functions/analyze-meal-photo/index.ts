@@ -336,6 +336,7 @@ serve(async (request) => {
 
     const locale = body.locale || 'en';
     const analysis = await analyzeWithOpenAi(body.photoUrl, locale);
+    
     await incrementAnalysisUsage(allowance.subscription);
 
     await logAnalysis({

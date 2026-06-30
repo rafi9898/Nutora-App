@@ -1,32 +1,56 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BackButton, Button, Screen } from '@/src/components/ui';
 import { colors, radius, shadows } from '@/src/constants/theme';
 import { useAppStore } from '@/src/store/app-store';
+import { revenueCatService } from '@/src/services/payments/revenuecat-service';
+import type { PurchasesPackage } from 'react-native-purchases';
 
 export default function SubscriptionScreen() {
-  console.log('Rendering subscription screen');
   const { t } = useTranslation();
   const subscription = useAppStore((state) => state.subscription);
   const subscriptionStatus = useAppStore((state) => state.subscriptionStatus);
   const subscriptionError = useAppStore((state) => state.subscriptionError);
-  const purchasePremium = useAppStore((state) => state.purchasePremium);
+  const purchasePackage = useAppStore((state) => state.purchasePackage);
   const restorePurchases = useAppStore((state) => state.restorePurchases);
+  
   const [message, setMessage] = useState<string | null>(null);
-  const [plan, setPlan] = useState<'monthly' | 'yearly'>('yearly');
+  const [packages, setPackages] = useState<PurchasesPackage[]>([]);
+  const [selectedPackage, setSelectedPackage] = useState<PurchasesPackage | null>(null);
+  const [isFetchingPackages, setIsFetchingPackages] = useState(true);
+
   const isPremium = subscription.tier === 'premium';
-  const limitText = subscription.monthlyLimit === null
+  const limitText = subscription.monthlyLimit === null || subscription.monthlyLimit === 9999
     ? t('subscription.unlimited')
     : t('subscription.monthlyUsage', { used: subscription.analysesUsed, limit: subscription.monthlyLimit });
-  const isLoading = subscriptionStatus === 'loading';
+  const isLoading = subscriptionStatus === 'loading' || isFetchingPackages;
   const benefits = t('subscription.benefits', { returnObjects: true }) as string[];
 
+  useEffect(() => {
+    async function loadPackages() {
+      setIsFetchingPackages(true);
+      const availablePackages = await revenueCatService.getOfferings();
+      setPackages(availablePackages);
+      
+      // Domyślnie zaznacz pakiet roczny (najbardziej opłacalny)
+      const yearly = availablePackages.find(p => p.packageType === 'ANNUAL' || p.identifier.toLowerCase().includes('year'));
+      if (yearly) {
+        setSelectedPackage(yearly);
+      } else if (availablePackages.length > 0) {
+        setSelectedPackage(availablePackages[0]);
+      }
+      setIsFetchingPackages(false);
+    }
+    loadPackages();
+  }, []);
+
   const buy = async () => {
+    if (!selectedPackage) return;
     setMessage(null);
-    const success = await purchasePremium(plan);
+    const success = await purchasePackage(selectedPackage);
     setMessage(success ? t('subscription.activated') : null);
     if (success) router.replace('/(tabs)/camera');
   };
@@ -36,6 +60,12 @@ export default function SubscriptionScreen() {
     const success = await restorePurchases();
     setMessage(success ? t('subscription.restored') : null);
   };
+
+  const monthlyPackage = packages.find(p => p.packageType === 'MONTHLY' || p.identifier.toLowerCase().includes('month'));
+  const yearlyPackage = packages.find(p => p.packageType === 'ANNUAL' || p.identifier.toLowerCase().includes('year'));
+
+  const isMonthlySelected = selectedPackage?.identifier === monthlyPackage?.identifier;
+  const isYearlySelected = selectedPackage?.identifier === yearlyPackage?.identifier;
 
   return <Screen>
     <BackButton onPress={() => router.back()} />
@@ -49,34 +79,49 @@ export default function SubscriptionScreen() {
       <Text style={styles.usageValue}>{limitText}</Text>
       <View style={styles.track}>
         <View style={[styles.fill, {
-          width: subscription.monthlyLimit === null ? '100%' : `${Math.min((subscription.analysesUsed / Math.max(subscription.monthlyLimit, 1)) * 100, 100)}%`
+          width: subscription.monthlyLimit === null || subscription.monthlyLimit === 9999 ? '100%' : `${Math.min((subscription.analysesUsed / Math.max(subscription.monthlyLimit, 1)) * 100, 100)}%`
         }]} />
       </View>
     </View>
-    <View style={styles.plansContainer}>
-      <Pressable style={[styles.planCard, plan === 'monthly' && styles.planCardActive]} onPress={() => setPlan('monthly')}>
-        <View style={styles.planTop}>
-          <Text style={[styles.planLabel, plan === 'monthly' && styles.planLabelActive]}>{t('subscription.planMonthly')}</Text>
-          <View style={[styles.radio, plan === 'monthly' && styles.radioActive]}>
-            {plan === 'monthly' && <View style={styles.radioInner} />}
-          </View>
-        </View>
-        <Text style={[styles.price, plan === 'monthly' && styles.priceActive]}>{t('subscription.priceMonthly')}</Text>
-        <Text style={[styles.period, plan === 'monthly' && styles.periodActive]}>{t('subscription.priceMonthlyPeriod')}</Text>
-      </Pressable>
 
-      <Pressable style={[styles.planCard, plan === 'yearly' && styles.planCardActive]} onPress={() => setPlan('yearly')}>
-        <View style={styles.badge}><Text style={styles.badgeText}>{t('subscription.savePercentage')}</Text></View>
-        <View style={styles.planTop}>
-          <Text style={[styles.planLabel, plan === 'yearly' && styles.planLabelActive]}>{t('subscription.planYearly')}</Text>
-          <View style={[styles.radio, plan === 'yearly' && styles.radioActive]}>
-            {plan === 'yearly' && <View style={styles.radioInner} />}
-          </View>
-        </View>
-        <Text style={[styles.price, plan === 'yearly' && styles.priceActive]}>{t('subscription.priceYearly')}</Text>
-        <Text style={[styles.period, plan === 'yearly' && styles.periodActive]}>{t('subscription.priceYearlyPeriod')}</Text>
-      </Pressable>
-    </View>
+    {isFetchingPackages ? (
+      <View style={styles.loaderContainer}>
+        <ActivityIndicator color={colors.primary} size="large" />
+      </View>
+    ) : packages.length === 0 ? (
+      <View style={styles.loaderContainer}>
+         <Text style={styles.error}>{t('subscription.loadError', 'Nie udało się pobrać pakietów. Sprawdź połączenie z internetem.')}</Text>
+      </View>
+    ) : (
+      <View style={styles.plansContainer}>
+        {monthlyPackage && (
+          <Pressable style={[styles.planCard, isMonthlySelected && styles.planCardActive]} onPress={() => setSelectedPackage(monthlyPackage)}>
+            <View style={styles.planTop}>
+              <Text style={[styles.planLabel, isMonthlySelected && styles.planLabelActive]}>{t('subscription.planMonthly')}</Text>
+              <View style={[styles.radio, isMonthlySelected && styles.radioActive]}>
+                {isMonthlySelected && <View style={styles.radioInner} />}
+              </View>
+            </View>
+            <Text style={[styles.price, isMonthlySelected && styles.priceActive]}>{monthlyPackage.product.priceString}</Text>
+            <Text style={[styles.period, isMonthlySelected && styles.periodActive]}>{t('subscription.priceMonthlyPeriod')}</Text>
+          </Pressable>
+        )}
+
+        {yearlyPackage && (
+          <Pressable style={[styles.planCard, isYearlySelected && styles.planCardActive]} onPress={() => setSelectedPackage(yearlyPackage)}>
+            <View style={styles.badge}><Text style={styles.badgeText}>{t('subscription.savePercentage')}</Text></View>
+            <View style={styles.planTop}>
+              <Text style={[styles.planLabel, isYearlySelected && styles.planLabelActive]}>{t('subscription.planYearly')}</Text>
+              <View style={[styles.radio, isYearlySelected && styles.radioActive]}>
+                {isYearlySelected && <View style={styles.radioInner} />}
+              </View>
+            </View>
+            <Text style={[styles.price, isYearlySelected && styles.priceActive]}>{yearlyPackage.product.priceString}</Text>
+            <Text style={[styles.period, isYearlySelected && styles.periodActive]}>{t('subscription.priceYearlyPeriod')}</Text>
+          </Pressable>
+        )}
+      </View>
+    )}
 
     <View style={styles.plan}>
       {benefits.map((item) => <View key={item} style={styles.benefit}>
@@ -86,7 +131,7 @@ export default function SubscriptionScreen() {
     </View>
     {(subscriptionError || message) && <Text style={[styles.status, subscriptionError && styles.error]}>{subscriptionError || message}</Text>}
     <View style={styles.bottom}>
-      <Button title={isPremium ? t('common.backToCamera') : isLoading ? t('subscription.processing') : t('subscription.activate')} onPress={isPremium ? () => router.replace('/(tabs)/camera') : buy} disabled={isLoading} />
+      <Button title={isPremium ? t('common.backToCamera') : isLoading ? t('subscription.processing') : t('subscription.activate')} onPress={isPremium ? () => router.replace('/(tabs)/camera') : buy} disabled={isLoading || packages.length === 0} />
       <Pressable onPress={restore} disabled={isLoading} style={styles.restoreButton}>
         <Text style={styles.restore}>{t('common.restorePurchase')}</Text>
       </Pressable>
@@ -105,6 +150,7 @@ const styles = StyleSheet.create({
   usageValue: { color: colors.text, fontSize: 17, fontWeight: '800', marginTop: 7 },
   track: { height: 7, borderRadius: 99, backgroundColor: '#E8ECE5', marginTop: 13, overflow: 'hidden' },
   fill: { height: '100%', backgroundColor: colors.primary, borderRadius: 99 },
+  loaderContainer: { padding: 30, alignItems: 'center', justifyContent: 'center', minHeight: 120 },
   plansContainer: { flexDirection: 'row', gap: 12, marginTop: 16 },
   planCard: { flex: 1, borderRadius: radius.lg, borderWidth: 1.5, borderColor: colors.line, backgroundColor: colors.surface, padding: 14, position: 'relative' },
   planCardActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },

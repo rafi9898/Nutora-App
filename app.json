@@ -15,9 +15,15 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "pro.nutora.app",
+      "buildNumber": "8",
       "associatedDomains": [
+        "applinks:nutora.pro",
         "applinks:nutora.pro"
-      ]
+      ],
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Aplikacja potrzebuje dostępu do aparatu, aby rozpoznawać posiłki ze zdjęć."
+      }
     },
     "android": {
       "package": "pro.nutora.app",
@@ -42,7 +48,11 @@
       ],
       "adaptiveIcon": {
         "backgroundColor": "#F8FAF4"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -66,6 +76,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "7c3b7878-66a9-475b-a847-d08d942d6af3"
+      }
     }
   }
 }

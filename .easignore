@@ -1,0 +1,14 @@
+node_modules/
+.expo/
+dist/
+*.log
+.DS_Store
+# EXPLICITLY ALLOW .env files to be uploaded to EAS!
+# .env
+# .env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+expo-env.d.ts

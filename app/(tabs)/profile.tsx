@@ -57,7 +57,7 @@ export default function ProfileScreen() {
       <View style={styles.premiumIcon}><Ionicons name="sparkles" size={21} color="#fff" /></View>
       <View style={{ flex: 1 }}>
         <Text style={styles.premiumTitle}>Nutora {subscription.tier === 'premium' ? t('profile.premiumPlan') : t('profile.freePlan')}</Text>
-        <Text style={styles.premiumText}>{subscription.tier === 'premium' ? (subscription.expiresAt ? `${t('profile.unlimitedActive')} (do: ${new Date(subscription.expiresAt).toLocaleDateString('pl-PL')})` : t('profile.unlimitedActive')) : t('profile.monthlyUsage', { used: subscription.analysesUsed, limit: subscription.monthlyLimit ?? 5 })}</Text>
+        <Text style={styles.premiumText}>{t('profile.monthlyUsage', { used: subscription.analysesUsed, limit: subscription.monthlyLimit ?? (subscription.tier === 'premium' ? 200 : 5) })}</Text>
       </View>
       <Ionicons name="chevron-forward" size={20} color="#fff" />
     </Pressable>
@@ -80,18 +80,6 @@ export default function ProfileScreen() {
       <Ionicons name="chevron-forward" size={19} color="#A5ADA4" />
     </Pressable>)}</View>
     <Button title={t('profile.logout')} variant="ghost" onPress={signOut} />
-    <Text 
-      onPress={() => {
-        import('@react-native-async-storage/async-storage').then(({ default: AsyncStorage }) => {
-          AsyncStorage.clear().then(() => {
-            alert('Pamięć wyczyszczona! Zresetuj aplikację (np. wpisz "r" w konsoli) aby przejść ponownie przez ekrany powitalne.');
-          });
-        });
-      }} 
-      style={{ color: 'red', textAlign: 'center', marginTop: 20, marginBottom: 40, fontWeight: 'bold' }}
-    >
-      🧹 WYCZYŚĆ DANE I CACHE (DEV)
-    </Text>
   </Screen>;
 }
 

@@ -8,6 +8,7 @@ import { changeAppLanguage, getDeviceLanguage, type AppLanguage } from '@/src/i1
 import { aiAnalysisService, authService, mealsService, profileService, storageService, subscriptionService, type SocialProvider } from '@/src/services/backend';
 import { mockAiService } from '@/src/services/mock-ai-service';
 import { revenueCatService } from '@/src/services/payments/revenuecat-service';
+import type { PurchasesPackage } from 'react-native-purchases';
 import type { Meal, MealNutritionInput, SubscriptionState, UserProfile } from '@/src/types';
 import i18n from '@/src/i18n';
 import { notificationsService } from '@/src/services/notifications-service';
@@ -129,6 +130,7 @@ type AppState = {
   saveAnalysisDraft: () => Promise<Meal | null>;
   clearAnalysisDraft: () => void;
   setSubscriptionTier: (tier: SubscriptionState['tier']) => Promise<void>;
+  purchasePackage: (pkg: PurchasesPackage) => Promise<boolean>;
   purchasePremium: (plan?: 'monthly' | 'yearly') => Promise<boolean>;
   restorePurchases: () => Promise<boolean>;
   hasAnalysisAvailable: () => boolean;
@@ -146,7 +148,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   language: getDeviceLanguage(),
   languageSelected: false,
   unitSystem: detectUnitSystem(),
-  notificationsEnabled: false,
+  notificationsEnabled: true,
   waterIntake: { date: getLocalISODate(), glasses: 0 },
   currentDate: new Date().toISOString().slice(0, 10),
   weightLogs: [],
@@ -355,9 +357,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
       subscriptionStatus: 'ready',
       subscriptionError: null,
       analysisDraft: null,
-      authError: null,
-      weightLogs: [],
-      waterIntake: { date: new Date().toISOString().slice(0, 10), glasses: 0 }
+      authError: null
     });
   },
   loadMeals: async () => {},
@@ -675,12 +675,32 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
       set({ subscriptionStatus: 'error', subscriptionError: error instanceof Error ? error.message : 'Nie udało się zmienić subskrypcji.' });
     }
   },
+  purchasePackage: async (pkg) => {
+    set({ subscriptionStatus: 'loading', subscriptionError: null });
+    const result = await revenueCatService.purchasePackage(pkg);
+
+    if (!result.success || !result.subscription) {
+      set({ subscriptionStatus: 'error', subscriptionError: result.error ?? 'Nie udało się aktywować subskrypcji.' });
+      return false;
+    }
+
+    if (isSupabaseMode && supabase) {
+      const userId = get().authUser?.id ?? get().profile.userId;
+      // Zapisujemy na backendzie informacje o premium. W przyszłości można to robić przez webhooki.
+      const subscription = await subscriptionService.setSubscriptionTier(userId, 'premium').catch(() => result.subscription ?? null);
+      set({ subscription: subscription ?? result.subscription, subscriptionStatus: 'ready', subscriptionError: null });
+      return true;
+    }
+
+    set({ subscription: result.subscription, subscriptionStatus: 'ready', subscriptionError: null });
+    return true;
+  },
   purchasePremium: async (plan = 'monthly') => {
     set({ subscriptionStatus: 'loading', subscriptionError: null });
     const result = await revenueCatService.purchasePremium(plan);
 
     if (!result.success || !result.subscription) {
-      set({ subscriptionStatus: 'error', subscriptionError: result.message ?? 'Nie udało się aktywować Premium.' });
+      set({ subscriptionStatus: 'error', subscriptionError: result.message ?? result.error ?? 'Nie udało się aktywować Premium.' });
       return false;
     }
 
@@ -699,7 +719,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     const result = await revenueCatService.restorePurchases();
 
     if (!result.success || !result.subscription) {
-      set({ subscriptionStatus: 'error', subscriptionError: result.message ?? 'Nie udało się przywrócić zakupów.' });
+      set({ subscriptionStatus: 'error', subscriptionError: result.error ?? result.message ?? 'Nie udało się przywrócić zakupów.' });
       return false;
     }
 

@@ -8,6 +8,7 @@ import { revenueCatService } from '@/src/services/payments/revenuecat-service';
 import { getSupabaseClient, isSupabaseConfigured } from '@/src/lib/supabase';
 import { router } from 'expo-router';
 import * as Linking from 'expo-linking';
+import Purchases from 'react-native-purchases';
 
 export default function RootLayout() {
   const initializeAuth = useAppStore((state) => state.initializeAuth);
@@ -15,8 +16,39 @@ export default function RootLayout() {
   const setLanguage = useAppStore((state) => state.setLanguage);
 
   useEffect(() => {
-    void initializeAuth();
-    void revenueCatService.configure();
+    const init = async () => {
+      // 1. Najpierw pobieramy profil z Supabase
+      await initializeAuth();
+      
+      // 2. Następnie konfigurujemy RevenueCat
+      await revenueCatService.configure();
+      
+      // 3. Odpalamy nasłuchiwacz na zmiany w trakcie używania apki
+      Purchases.addCustomerInfoUpdateListener(async (info) => {
+        const subState = await revenueCatService.checkSubscriptionStatus();
+        if (subState) {
+          useAppStore.setState({ subscription: subState });
+        } else {
+          const currentSub = useAppStore.getState().subscription;
+          if (currentSub.tier === 'premium') {
+            await useAppStore.getState().setSubscriptionTier('free');
+          }
+        }
+      });
+      
+      // 4. Twarde sprawdzenie ostatecznego statusu (ostateczne źródło prawdy)
+      const finalSubState = await revenueCatService.checkSubscriptionStatus();
+      if (finalSubState) {
+        useAppStore.setState({ subscription: finalSubState });
+      } else {
+        const currentSub = useAppStore.getState().subscription;
+        if (currentSub.tier === 'premium') {
+          await useAppStore.getState().setSubscriptionTier('free');
+        }
+      }
+    };
+    
+    void init();
 
     if (isSupabaseConfigured) {
       const supabase = getSupabaseClient();

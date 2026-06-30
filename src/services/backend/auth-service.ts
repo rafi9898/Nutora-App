@@ -17,9 +17,7 @@ export type SocialProvider = 'google' | 'facebook';
 
 import * as AuthSession from 'expo-auth-session';
 
-const getOAuthRedirectUrl = () => AuthSession.makeRedirectUri({
-  path: 'auth/callback'
-});
+const getOAuthRedirectUrl = () => 'nutora://auth/callback';
 
 export const authService = {
   async register({ email, password, name }: RegisterInput) {
