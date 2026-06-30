@@ -20,8 +20,12 @@ export default function RootLayout() {
       // 1. Najpierw pobieramy profil z Supabase
       await initializeAuth();
       
-      // 2. Następnie konfigurujemy RevenueCat
+      // 2. Następnie konfigurujemy RevenueCat i logujemy usera, żeby nie był anonimowy
       await revenueCatService.configure();
+      const authUser = useAppStore.getState().authUser;
+      if (authUser?.id) {
+        await revenueCatService.login(authUser.id);
+      }
       
       // 3. Odpalamy nasłuchiwacz na zmiany w trakcie używania apki
       Purchases.addCustomerInfoUpdateListener(async (info) => {

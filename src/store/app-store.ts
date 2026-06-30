@@ -201,6 +201,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
         hasOnboarded: Boolean(backendProfile?.age),
         authError: null
       });
+      await revenueCatService.login(user.id);
     } catch (error) {
       set({
         authStatus: 'unauthenticated',
@@ -243,6 +244,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
         authError: null
       });
 
+      await revenueCatService.login(user.id);
+
       return true;
     } catch (error) {
       set({
@@ -282,9 +285,12 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
         subscription: backendSubscription ?? get().subscription,
         subscriptionStatus: backendSubscription ? 'ready' : get().subscriptionStatus,
         subscriptionError: backendSubscription ? null : get().subscriptionError,
-        hasOnboarded: Boolean(backendProfile?.age),
         authError: null
       });
+
+      if (user) {
+        await revenueCatService.login(user.id);
+      }
 
       return Boolean(user);
     } catch (error) {
@@ -342,6 +348,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     if (isSupabaseMode && supabase) {
       try {
         await authService.logout();
+        await revenueCatService.logout();
       } catch (error) {
         set({ authError: translateError(error, 'Nie udało się wylogować.') });
       }

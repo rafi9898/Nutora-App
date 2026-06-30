@@ -53,6 +53,24 @@ export const revenueCatService = {
     }
   },
 
+  async login(userId: string) {
+    try {
+      const { customerInfo, created } = await Purchases.logIn(userId);
+      console.log(`Zalogowano w RevenueCat: ${userId} (Utworzono nowy? ${created})`);
+    } catch (e) {
+      console.error("Błąd logowania w RevenueCat:", e);
+    }
+  },
+
+  async logout() {
+    try {
+      await Purchases.logOut();
+      console.log("Wylogowano z RevenueCat.");
+    } catch (e) {
+      console.error("Błąd wylogowywania z RevenueCat:", e);
+    }
+  },
+
   async checkSubscriptionStatus(): Promise<SubscriptionState | null> {
     try {
       const customerInfo = await Purchases.getCustomerInfo();
