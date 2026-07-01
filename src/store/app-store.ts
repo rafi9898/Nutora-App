@@ -134,6 +134,7 @@ type AppState = {
   purchasePremium: (plan?: 'monthly' | 'yearly') => Promise<boolean>;
   restorePurchases: () => Promise<boolean>;
   hasAnalysisAvailable: () => boolean;
+  getAnalysesUsed: () => number;
   clearAuthError: () => void;
 };
 
@@ -201,7 +202,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
         hasOnboarded: Boolean(backendProfile?.age),
         authError: null
       });
-      await revenueCatService.login(user.id);
+      try { await revenueCatService.login(user.id); } catch(e) { console.warn('RC error:', e); }
     } catch (error) {
       set({
         authStatus: 'unauthenticated',
@@ -244,7 +245,13 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
         authError: null
       });
 
-      await revenueCatService.login(user.id);
+      try { await revenueCatService.login(user.id); } catch(e) { console.warn('RC error:', e); }
+
+      // Force refresh RevenueCat status to ensure UI is in sync
+      const rcState = await revenueCatService.checkSubscriptionStatus();
+      if (rcState && rcState.status === 'active') {
+        set({ subscription: { ...rcState, analysesUsed: get().subscription.analysesUsed, usageMonth: get().subscription.usageMonth } });
+      }
 
       return true;
     } catch (error) {
@@ -289,7 +296,12 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
       });
 
       if (user) {
-        await revenueCatService.login(user.id);
+        try { await revenueCatService.login(user.id); } catch(e) { console.warn('RC error:', e); }
+        // Force refresh RevenueCat status to ensure UI is in sync
+        const rcState = await revenueCatService.checkSubscriptionStatus();
+        if (rcState && rcState.status === 'active') {
+          set({ subscription: { ...rcState, analysesUsed: get().subscription.analysesUsed, usageMonth: get().subscription.usageMonth } });
+        }
       }
 
       return Boolean(user);
@@ -335,6 +347,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
         authError: null
       });
 
+      try { await revenueCatService.login(user.id); } catch(e) { console.warn('RC error:', e); }
+
       return true;
     } catch (error) {
       set({
@@ -345,6 +359,11 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     }
   },
   logout: async () => {
+    set({
+      authStatus: 'unauthenticated',
+      authError: null
+    });
+
     if (isSupabaseMode && supabase) {
       try {
         await authService.logout();
@@ -725,6 +744,19 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     set({ subscriptionStatus: 'loading', subscriptionError: null });
     const result = await revenueCatService.restorePurchases();
 
+    if (result.subscription?.status === 'expired') {
+      const userId = get().authUser?.id ?? get().profile.userId;
+      if (isSupabaseMode && supabase && userId) {
+        await subscriptionService.setSubscriptionTier(userId, 'free').catch(() => null);
+      }
+      set({ 
+        subscription: { ...get().subscription, tier: 'free', status: 'inactive' },
+        subscriptionStatus: 'error', 
+        subscriptionError: result.error ?? 'Twoja subskrypcja wygasła.' 
+      });
+      return false;
+    }
+
     if (!result.success || !result.subscription) {
       set({ subscriptionStatus: 'error', subscriptionError: result.error ?? result.message ?? 'Nie udało się przywrócić zakupów.' });
       return false;
@@ -732,8 +764,17 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
 
     if (isSupabaseMode && supabase) {
       const userId = get().authUser?.id ?? get().profile.userId;
+      // Pobieramy istniejącą subskrypcję, żeby zachować analyses_used i usage_month
+      const existingSub = await subscriptionService.getSubscription(userId).catch(() => null);
       const subscription = await subscriptionService.setSubscriptionTier(userId, 'premium').catch(() => result.subscription ?? null);
-      set({ subscription: subscription ?? result.subscription, subscriptionStatus: 'ready', subscriptionError: null });
+      
+      // Zachowujemy dane o zużyciu z istniejącej subskrypcji (jeśli istnieje)
+      const finalSub = subscription ?? result.subscription;
+      if (finalSub && existingSub) {
+        finalSub.analysesUsed = existingSub.analysesUsed;
+        finalSub.usageMonth = existingSub.usageMonth;
+      }
+      set({ subscription: finalSub!, subscriptionStatus: 'ready', subscriptionError: null });
       return true;
     }
 
@@ -744,6 +785,10 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     const state = get();
     const limit = state.subscription.tier === 'premium' ? PREMIUM_ANALYSIS_LIMIT : FREE_ANALYSIS_LIMIT;
     return state.subscription.usageMonth !== getCurrentMonth() || state.subscription.analysesUsed < (state.subscription.monthlyLimit ?? limit);
+  },
+  getAnalysesUsed: () => {
+    const state = get();
+    return state.subscription.usageMonth === getCurrentMonth() ? state.subscription.analysesUsed : 0;
   },
   clearAuthError: () => set({ authError: null }),
 
