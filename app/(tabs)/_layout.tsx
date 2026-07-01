@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Redirect, Tabs } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { isSupabaseMode } from '@/src/config/env';
 import { colors } from '@/src/constants/theme';
 import { useAppStore } from '@/src/store/app-store';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function TabIcon({ outline, active, color, focused }: { outline: 'home-outline' | 'add-circle-outline' | 'bar-chart-outline' | 'person-outline'; active: 'home' | 'add-circle' | 'bar-chart' | 'person'; color: string; focused: boolean }) {
   return <Ionicons name={focused ? active : outline} size={24} color={color} />;
@@ -19,6 +20,7 @@ export default function TabsLayout() {
   const { t } = useTranslation();
   const authStatus = useAppStore((state) => state.authStatus);
   const language = useAppStore((state) => state.language);
+  const insets = useSafeAreaInsets();
 
   if (isSupabaseMode && (authStatus === 'idle' || authStatus === 'loading')) {
     return <View style={styles.loading}><ActivityIndicator color={colors.primary} /></View>;
@@ -28,7 +30,7 @@ export default function TabsLayout() {
     return <Redirect href="/" />;
   }
 
-  return <Tabs key={language} screenOptions={{ headerShown: false, tabBarActiveTintColor: colors.primary, tabBarInactiveTintColor: '#7B837B', tabBarStyle: { height: 76, paddingTop: 8, borderTopColor: colors.line, backgroundColor: '#fff' }, tabBarLabelStyle: { fontSize: 11, fontWeight: '700' } }}>
+  return <Tabs key={language} screenOptions={{ headerShown: false, tabBarActiveTintColor: colors.primary, tabBarInactiveTintColor: '#7B837B', tabBarStyle: { height: 60 + insets.bottom, paddingBottom: insets.bottom > 0 ? insets.bottom : 12, paddingTop: 8, borderTopColor: colors.line, backgroundColor: '#fff' }, tabBarLabelStyle: { fontSize: 11, fontWeight: '700' } }}>
     <Tabs.Screen name="home" options={{ title: t('tabs.home'), tabBarLabel: t('tabs.home'), tabBarIcon: HomeIcon }} />
     <Tabs.Screen name="camera" options={{ title: t('tabs.add'), tabBarLabel: t('tabs.add'), tabBarIcon: AddIcon }} />
     <Tabs.Screen name="history" options={{ title: t('tabs.history'), tabBarLabel: t('tabs.history'), tabBarIcon: HistoryIcon }} />

@@ -16,6 +16,7 @@ export default function ProfileScreen() {
   const profile = useAppStore((state) => state.profile);
   const weightLogs = useAppStore((state) => state.weightLogs);
   const subscription = useAppStore((state) => state.subscription);
+  const getAnalysesUsed = useAppStore((state) => state.getAnalysesUsed);
   const logout = useAppStore((state) => state.logout);
   const language = useAppStore((state) => state.language);
   const setLanguage = useAppStore((state) => state.setLanguage);
@@ -57,7 +58,7 @@ export default function ProfileScreen() {
       <View style={styles.premiumIcon}><Ionicons name="sparkles" size={21} color="#fff" /></View>
       <View style={{ flex: 1 }}>
         <Text style={styles.premiumTitle}>Nutora {subscription.tier === 'premium' ? t('profile.premiumPlan') : t('profile.freePlan')}</Text>
-        <Text style={styles.premiumText}>{t('profile.monthlyUsage', { used: subscription.analysesUsed, limit: subscription.monthlyLimit ?? (subscription.tier === 'premium' ? 200 : 5) })}</Text>
+        <Text style={styles.premiumText}>{t('profile.monthlyUsage', { used: getAnalysesUsed(), limit: subscription.monthlyLimit ?? (subscription.tier === 'premium' ? 200 : 5) })}</Text>
       </View>
       <Ionicons name="chevron-forward" size={20} color="#fff" />
     </Pressable>

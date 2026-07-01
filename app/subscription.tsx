@@ -12,6 +12,7 @@ import type { PurchasesPackage } from 'react-native-purchases';
 export default function SubscriptionScreen() {
   const { t } = useTranslation();
   const subscription = useAppStore((state) => state.subscription);
+  const getAnalysesUsed = useAppStore((state) => state.getAnalysesUsed);
   const subscriptionStatus = useAppStore((state) => state.subscriptionStatus);
   const subscriptionError = useAppStore((state) => state.subscriptionError);
   const purchasePackage = useAppStore((state) => state.purchasePackage);
@@ -25,7 +26,7 @@ export default function SubscriptionScreen() {
   const isPremium = subscription.tier === 'premium';
   const limitText = subscription.monthlyLimit === null || subscription.monthlyLimit === 9999
     ? t('subscription.unlimited')
-    : t('subscription.monthlyUsage', { used: subscription.analysesUsed, limit: subscription.monthlyLimit });
+    : t('subscription.monthlyUsage', { used: getAnalysesUsed(), limit: subscription.monthlyLimit });
   const isLoading = subscriptionStatus === 'loading' || isFetchingPackages;
   const benefits = t('subscription.benefits', { returnObjects: true }) as string[];
 
@@ -79,7 +80,7 @@ export default function SubscriptionScreen() {
       <Text style={styles.usageValue}>{limitText}</Text>
       <View style={styles.track}>
         <View style={[styles.fill, {
-          width: subscription.monthlyLimit === null || subscription.monthlyLimit === 9999 ? '100%' : `${Math.min((subscription.analysesUsed / Math.max(subscription.monthlyLimit, 1)) * 100, 100)}%`
+          width: subscription.monthlyLimit === null || subscription.monthlyLimit === 9999 ? '100%' : `${Math.min((getAnalysesUsed() / Math.max(subscription.monthlyLimit, 1)) * 100, 100)}%`
         }]} />
       </View>
     </View>

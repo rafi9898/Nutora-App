@@ -1,6 +1,8 @@
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
+import { Platform } from 'react-native';
 import { getSupabaseClient } from '@/src/lib/supabase';
+import * as AuthSession from 'expo-auth-session';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -15,9 +17,8 @@ export type RegisterInput = AuthCredentials & {
 
 export type SocialProvider = 'google' | 'facebook';
 
-import * as AuthSession from 'expo-auth-session';
 
-const getOAuthRedirectUrl = () => 'nutora://auth/callback';
+const getOAuthRedirectUrl = () => AuthSession.makeRedirectUri({ path: 'auth/callback' });
 
 export const authService = {
   async register({ email, password, name }: RegisterInput) {
@@ -86,7 +87,8 @@ export const authService = {
     if (error) throw error;
     if (!data.url) throw new Error('Nie udało się przygotować logowania społecznościowego.');
 
-    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+    const browserOptions = Platform.OS === 'android' ? { showInRecents: false, createTask: false } : {};
+    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo, browserOptions);
 
     if (result.type !== 'success') return null;
 

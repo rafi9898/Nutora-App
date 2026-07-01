@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import '@/src/i18n';
 import { useAppStore } from '@/src/store/app-store';
 
-import { revenueCatService } from '@/src/services/payments/revenuecat-service';
+import { revenueCatService, mapCustomerInfoToSubscriptionState } from '@/src/services/payments/revenuecat-service';
 import { getSupabaseClient, isSupabaseConfigured } from '@/src/lib/supabase';
 import { router } from 'expo-router';
 import * as Linking from 'expo-linking';
@@ -17,7 +17,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     const init = async () => {
-      // 1. Najpierw pobieramy profil z Supabase
+      // 1. Najpierw pobieramy profil z Supabase (JEDYNE źródło prawdy o subskrypcji)
       await initializeAuth();
       
       // 2. Następnie konfigurujemy RevenueCat i logujemy usera, żeby nie był anonimowy
@@ -27,31 +27,37 @@ export default function RootLayout() {
         await revenueCatService.login(authUser.id);
       }
       
-      // 3. Odpalamy nasłuchiwacz na zmiany w trakcie używania apki
-      Purchases.addCustomerInfoUpdateListener(async (info) => {
-        const subState = await revenueCatService.checkSubscriptionStatus();
+      // 3. Nasłuchiwacz na zmiany – TYLKO podwyższa status, nigdy nie degraduje
+      Purchases.addCustomerInfoUpdateListener((info) => {
+        const currentUserId = useAppStore.getState().authUser?.id;
+        const subState = mapCustomerInfoToSubscriptionState(info, currentUserId);
         if (subState) {
+          // RevenueCat potwierdza premium → aktualizuj lokalny stan (zachowaj zużycie)
           const currentSub = useAppStore.getState().subscription;
           useAppStore.setState({ subscription: { ...subState, analysesUsed: currentSub.analysesUsed, usageMonth: currentSub.usageMonth } });
-        } else {
-          const currentSub = useAppStore.getState().subscription;
-          if (currentSub.tier === 'premium') {
-            await useAppStore.getState().setSubscriptionTier('free');
-          }
         }
+        // Jeśli RC nie widzi entitlementu → NIE degradujemy!
+        // Supabase jest źródłem prawdy. Degradacja tylko przez webhooks serwera.
       });
       
-      // 4. Twarde sprawdzenie ostatecznego statusu (ostateczne źródło prawdy)
-      const finalSubState = await revenueCatService.checkSubscriptionStatus();
+      // 4. Sprawdzenie RC – jeśli wygasło to zbijamy do free, jeśli aktywne to podwyższamy
+      const currentUserIdLayout = useAppStore.getState().authUser?.id;
+      const finalSubState = await revenueCatService.checkSubscriptionStatus(currentUserIdLayout);
       if (finalSubState) {
         const currentSub = useAppStore.getState().subscription;
-        useAppStore.setState({ subscription: { ...finalSubState, analysesUsed: currentSub.analysesUsed, usageMonth: currentSub.usageMonth } });
-      } else {
-        const currentSub = useAppStore.getState().subscription;
-        if (currentSub.tier === 'premium') {
-          await useAppStore.getState().setSubscriptionTier('free');
+        if (finalSubState.status === 'expired' && currentSub.tier === 'premium') {
+          // Użytkownik stracił premium w RevenueCat (wygaśnięcie subskrypcji sandbox)
+          const userId = useAppStore.getState().authUser?.id;
+          if (userId && isSupabaseMode && getSupabaseClient()) {
+            await subscriptionService.setSubscriptionTier(userId, 'free').catch(console.warn);
+          }
+          useAppStore.setState({ subscription: { ...finalSubState, analysesUsed: currentSub.analysesUsed, usageMonth: currentSub.usageMonth } });
+        } else if (finalSubState.status === 'active') {
+          // Podwyższamy na premium lub aktualizujemy
+          useAppStore.setState({ subscription: { ...finalSubState, analysesUsed: currentSub.analysesUsed, usageMonth: currentSub.usageMonth } });
         }
       }
+      // Jeśli RC nie widzi entitlementu → nic nie robimy, ufamy Supabase
     };
     
     void init();

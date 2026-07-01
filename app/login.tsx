@@ -1,7 +1,8 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { BackButton, Button, Logo, Screen } from '@/src/components/ui';
 import { isSupabaseMode } from '@/src/config/env';
 import { colors, radius } from '@/src/constants/theme';

@@ -355,8 +355,9 @@ const pl = {
     savePercentage: 'OSZCZĘDZASZ 30%',
     priceMonthly: '29,99 zł',
     priceMonthlyPeriod: 'za miesiąc',
-    priceYearly: '249,99 zł',
-    priceYearlyPeriod: 'za rok (20,83 zł / mc)',
+    priceYearly: '149,99 zł',
+    priceYearlyPeriod: 'za rok (12,50 zł / mc)',
+    buttonUpgrade: 'Ulepsz do Premium',
   },
   ai: {
     localeName: 'polskim'

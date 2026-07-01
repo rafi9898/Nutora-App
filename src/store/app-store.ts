@@ -248,7 +248,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
       try { await revenueCatService.login(user.id); } catch(e) { console.warn('RC error:', e); }
 
       // Force refresh RevenueCat status to ensure UI is in sync
-      const rcState = await revenueCatService.checkSubscriptionStatus();
+      const rcState = await revenueCatService.checkSubscriptionStatus(user.id);
       if (rcState) {
         if (rcState.status === 'active') {
           set({ subscription: { ...rcState, analysesUsed: get().subscription.analysesUsed, usageMonth: get().subscription.usageMonth } });
@@ -306,7 +306,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
       if (user) {
         try { await revenueCatService.login(user.id); } catch(e) { console.warn('RC error:', e); }
         // Force refresh RevenueCat status to ensure UI is in sync
-        const rcState = await revenueCatService.checkSubscriptionStatus();
+        const rcState = await revenueCatService.checkSubscriptionStatus(user.id);
         if (rcState) {
           if (rcState.status === 'active') {
             set({ subscription: { ...rcState, analysesUsed: get().subscription.analysesUsed, usageMonth: get().subscription.usageMonth } });
@@ -366,7 +366,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
       try { await revenueCatService.login(user.id); } catch(e) { console.warn('RC error:', e); }
 
       // Force refresh RevenueCat status to ensure UI is in sync
-      const rcState = await revenueCatService.checkSubscriptionStatus();
+      const rcState = await revenueCatService.checkSubscriptionStatus(user.id);
       if (rcState) {
         if (rcState.status === 'active') {
           set({ subscription: { ...rcState, analysesUsed: get().subscription.analysesUsed, usageMonth: get().subscription.usageMonth } });
@@ -733,7 +733,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   },
   purchasePackage: async (pkg) => {
     set({ subscriptionStatus: 'loading', subscriptionError: null });
-    const result = await revenueCatService.purchasePackage(pkg);
+    const currentUserId = get().authUser?.id ?? get().profile.userId;
+    const result = await revenueCatService.purchasePackage(pkg, currentUserId);
 
     if (!result.success || !result.subscription) {
       set({ subscriptionStatus: 'error', subscriptionError: result.error ?? 'Nie udało się aktywować subskrypcji.' });
@@ -753,7 +754,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   },
   purchasePremium: async (plan = 'monthly') => {
     set({ subscriptionStatus: 'loading', subscriptionError: null });
-    const result = await revenueCatService.purchasePremium(plan);
+    const currentUserId = get().authUser?.id ?? get().profile.userId;
+    const result = await revenueCatService.purchasePremium(plan, currentUserId);
 
     if (!result.success || !result.subscription) {
       set({ subscriptionStatus: 'error', subscriptionError: result.message ?? result.error ?? 'Nie udało się aktywować Premium.' });

@@ -16,7 +16,22 @@ const ENTITLEMENT_ID = process.env.EXPO_PUBLIC_REVENUECAT_ENTITLEMENT_ID || 'pre
 
 const currentMonth = () => new Date().toISOString().slice(0, 7);
 
-export const mapCustomerInfoToSubscriptionState = (info: CustomerInfo): SubscriptionState | undefined => {
+export const mapCustomerInfoToSubscriptionState = (info: CustomerInfo, currentUserId?: string): SubscriptionState | undefined => {
+  // BARDZO WAŻNE: Zabezpieczenie przed transferem (szczególnie Android)
+  if (currentUserId && info.originalAppUserId && info.originalAppUserId !== currentUserId) {
+    if (!info.originalAppUserId.startsWith('$RCAnonymous')) {
+      // Ten paragon należy do kogoś innego. Zwracamy stan expired/free żeby aplikacja nie przyznała Premium.
+      return {
+        tier: 'free',
+        analysesUsed: 0,
+        usageMonth: currentMonth(),
+        monthlyLimit: 3,
+        provider: 'revenuecat',
+        status: 'expired'
+      };
+    }
+  }
+
   const entitlement = info.entitlements.active[ENTITLEMENT_ID];
   
   if (entitlement) {
@@ -83,13 +98,12 @@ export const revenueCatService = {
     }
   },
 
-  async checkSubscriptionStatus(): Promise<SubscriptionState | null> {
+  async checkSubscriptionStatus(currentUserId?: string): Promise<SubscriptionState | null> {
     try {
       const customerInfo = await Purchases.getCustomerInfo();
-      const subState = mapCustomerInfoToSubscriptionState(customerInfo);
-      return subState || null;
+      return mapCustomerInfoToSubscriptionState(customerInfo, currentUserId) || null;
     } catch (e) {
-      console.warn("Błąd podczas sprawdzania statusu subskrypcji RC:", e);
+      console.warn("Błąd sprawdzania statusu subskrypcji:", e);
       return null;
     }
   },
@@ -107,11 +121,10 @@ export const revenueCatService = {
     }
   },
 
-  async purchasePackage(pkg: PurchasesPackage): Promise<PurchaseResult> {
+  async purchasePackage(pkg: PurchasesPackage, currentUserId?: string): Promise<PurchaseResult> {
     try {
       const { customerInfo } = await Purchases.purchasePackage(pkg);
-      
-      const subState = mapCustomerInfoToSubscriptionState(customerInfo);
+      const subState = mapCustomerInfoToSubscriptionState(customerInfo, currentUserId);
       
       if (subState && subState.status === 'active') {
         return {
@@ -136,7 +149,7 @@ export const revenueCatService = {
     }
   },
 
-  async purchasePremium(plan: 'monthly' | 'yearly' = 'monthly'): Promise<PurchaseResult> {
+  async purchasePremium(plan: 'monthly' | 'yearly' = 'monthly', currentUserId?: string): Promise<PurchaseResult> {
     // Zachowujemy tę metodę dla wstecznej kompatybilności, ale rekomendowane jest wywoływanie purchasePackage bezpośrednio z UI
     return {
       success: false,
@@ -159,7 +172,7 @@ export const revenueCatService = {
         }
       }
 
-      const subState = mapCustomerInfoToSubscriptionState(customerInfo);
+      const subState = mapCustomerInfoToSubscriptionState(customerInfo, currentUserId);
       
       if (subState && subState.status === 'active') {
         return {
