@@ -249,8 +249,16 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
 
       // Force refresh RevenueCat status to ensure UI is in sync
       const rcState = await revenueCatService.checkSubscriptionStatus();
-      if (rcState && rcState.status === 'active') {
-        set({ subscription: { ...rcState, analysesUsed: get().subscription.analysesUsed, usageMonth: get().subscription.usageMonth } });
+      if (rcState) {
+        if (rcState.status === 'active') {
+          set({ subscription: { ...rcState, analysesUsed: get().subscription.analysesUsed, usageMonth: get().subscription.usageMonth } });
+        } else if (rcState.status === 'expired' && get().subscription.tier === 'premium') {
+          const currentSub = get().subscription;
+          if (isSupabaseMode && supabase) {
+            await subscriptionService.setSubscriptionTier(user.id, 'free').catch(console.warn);
+          }
+          set({ subscription: { ...rcState, analysesUsed: currentSub.analysesUsed, usageMonth: currentSub.usageMonth } });
+        }
       }
 
       return true;
@@ -299,8 +307,16 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
         try { await revenueCatService.login(user.id); } catch(e) { console.warn('RC error:', e); }
         // Force refresh RevenueCat status to ensure UI is in sync
         const rcState = await revenueCatService.checkSubscriptionStatus();
-        if (rcState && rcState.status === 'active') {
-          set({ subscription: { ...rcState, analysesUsed: get().subscription.analysesUsed, usageMonth: get().subscription.usageMonth } });
+        if (rcState) {
+          if (rcState.status === 'active') {
+            set({ subscription: { ...rcState, analysesUsed: get().subscription.analysesUsed, usageMonth: get().subscription.usageMonth } });
+          } else if (rcState.status === 'expired' && get().subscription.tier === 'premium') {
+            const currentSub = get().subscription;
+            if (isSupabaseMode && supabase) {
+              await subscriptionService.setSubscriptionTier(user.id, 'free').catch(console.warn);
+            }
+            set({ subscription: { ...rcState, analysesUsed: currentSub.analysesUsed, usageMonth: currentSub.usageMonth } });
+          }
         }
       }
 
@@ -348,6 +364,20 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
       });
 
       try { await revenueCatService.login(user.id); } catch(e) { console.warn('RC error:', e); }
+
+      // Force refresh RevenueCat status to ensure UI is in sync
+      const rcState = await revenueCatService.checkSubscriptionStatus();
+      if (rcState) {
+        if (rcState.status === 'active') {
+          set({ subscription: { ...rcState, analysesUsed: get().subscription.analysesUsed, usageMonth: get().subscription.usageMonth } });
+        } else if (rcState.status === 'expired' && get().subscription.tier === 'premium') {
+          const currentSub = get().subscription;
+          if (isSupabaseMode && supabase) {
+            await subscriptionService.setSubscriptionTier(user.id, 'free').catch(console.warn);
+          }
+          set({ subscription: { ...rcState, analysesUsed: currentSub.analysesUsed, usageMonth: currentSub.usageMonth } });
+        }
+      }
 
       return true;
     } catch (error) {
@@ -742,7 +772,8 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   },
   restorePurchases: async () => {
     set({ subscriptionStatus: 'loading', subscriptionError: null });
-    const result = await revenueCatService.restorePurchases();
+    const currentUserId = get().authUser?.id ?? get().profile.userId;
+    const result = await revenueCatService.restorePurchases(currentUserId);
 
     if (result.subscription?.status === 'expired') {
       const userId = get().authUser?.id ?? get().profile.userId;

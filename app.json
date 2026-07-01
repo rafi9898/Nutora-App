@@ -15,19 +15,25 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "pro.nutora.app",
-      "buildNumber": "17",
+      "buildNumber": "18",
       "associatedDomains": [
         "applinks:nutora.pro",
         "applinks:nutora.pro"
       ],
+      "entitlements": {
+        "aps-environment": "production"
+      },
       "infoPlist": {
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "Aplikacja potrzebuje dostępu do aparatu, aby rozpoznawać posiłki ze zdjęć."
       }
     },
     "android": {
       "package": "pro.nutora.app",
-      "versionCode": 9,
+      "versionCode": 10,
       "intentFilters": [
         {
           "action": "VIEW",

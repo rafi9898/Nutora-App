@@ -144,9 +144,21 @@ export const revenueCatService = {
     };
   },
 
-  async restorePurchases(): Promise<PurchaseResult> {
+  async restorePurchases(currentUserId?: string): Promise<PurchaseResult> {
     try {
       const customerInfo = await Purchases.restorePurchases();
+      
+      // Strict check to prevent Android Sandbox (and other edge cases) from transferring the receipt to a new account
+      if (currentUserId && customerInfo.originalAppUserId && customerInfo.originalAppUserId !== currentUserId) {
+        // Sprawdzamy czy to nie jest przypadkiem zanonimizowane ID sprzed logowania
+        if (!customerInfo.originalAppUserId.startsWith('$RCAnonymous')) {
+          return {
+            success: false,
+            error: 'Ta subskrypcja została pierwotnie zakupiona na innym koncie. Zaloguj się na właściwe konto, aby ją przywrócić.'
+          };
+        }
+      }
+
       const subState = mapCustomerInfoToSubscriptionState(customerInfo);
       
       if (subState && subState.status === 'active') {
