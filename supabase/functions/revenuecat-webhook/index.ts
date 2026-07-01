@@ -5,7 +5,9 @@ type RevenueCatEvent = {
   event?: {
     app_user_id?: string;
     original_app_user_id?: string;
+    aliases?: string[];
     type?: string;
+    purchased_at_ms?: number | null;
     expiration_at_ms?: number | null;
     product_id?: string;
     entitlement_id?: string;
@@ -26,12 +28,37 @@ const getClient = () => {
   return createClient(supabaseUrl, serviceRoleKey);
 };
 
-const isActiveRevenueCatEvent = (type?: string) => {
-  return ['INITIAL_PURCHASE', 'RENEWAL', 'UNCANCELLATION', 'PRODUCT_CHANGE', 'NON_RENEWING_PURCHASE'].includes(type ?? '');
+const msToIso = (value?: number | null) => value ? new Date(value).toISOString() : null;
+const isSupabaseUserId = (value?: string | null) => Boolean(
+  value?.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)
+);
+
+const getUserId = (event?: RevenueCatEvent['event']) => {
+  if (isSupabaseUserId(event?.app_user_id)) return event?.app_user_id;
+  if (isSupabaseUserId(event?.original_app_user_id)) return event?.original_app_user_id;
+  return null;
 };
 
-const isInactiveRevenueCatEvent = (type?: string) => {
-  return ['CANCELLATION', 'EXPIRATION', 'BILLING_ISSUE'].includes(type ?? '');
+const hasFutureExpiration = (expirationAtMs?: number | null) => {
+  return typeof expirationAtMs === 'number' && expirationAtMs > Date.now();
+};
+
+const mapRevenueCatEvent = (type?: string, expirationAtMs?: number | null) => {
+  if (['INITIAL_PURCHASE', 'RENEWAL', 'UNCANCELLATION', 'PRODUCT_CHANGE', 'NON_RENEWING_PURCHASE'].includes(type ?? '')) {
+    return { tier: 'premium' as const, status: 'active' as const };
+  }
+
+  if (type === 'CANCELLATION' || type === 'BILLING_ISSUE') {
+    return hasFutureExpiration(expirationAtMs)
+      ? { tier: 'premium' as const, status: 'active' as const }
+      : { tier: 'free' as const, status: 'inactive' as const };
+  }
+
+  if (type === 'EXPIRATION') {
+    return { tier: 'free' as const, status: 'expired' as const };
+  }
+
+  return null;
 };
 
 serve(async (request) => {
@@ -53,30 +80,39 @@ serve(async (request) => {
   }
 
   const event = body.event;
-  const userId = event?.app_user_id ?? event?.original_app_user_id;
+  const userId = getUserId(event);
 
-  if (!userId) return json({ error: 'Missing app_user_id' }, 400);
+  if (!userId) {
+    return json({
+      received: true,
+      ignored: true,
+      reason: 'missing_supabase_user_id',
+      app_user_id: event?.app_user_id ?? null,
+      original_app_user_id: event?.original_app_user_id ?? null
+    });
+  }
 
-  const active = isActiveRevenueCatEvent(event?.type);
-  const inactive = isInactiveRevenueCatEvent(event?.type);
+  const mapped = mapRevenueCatEvent(event?.type, event?.expiration_at_ms);
 
-  if (!active && !inactive) {
+  if (!mapped) {
     return json({ received: true, ignored: true });
   }
 
   const supabase = getClient();
-  const periodEnd = event?.expiration_at_ms ? new Date(event.expiration_at_ms).toISOString() : null;
+  const periodStart = msToIso(event?.purchased_at_ms);
+  const periodEnd = msToIso(event?.expiration_at_ms);
 
   const { error } = await supabase
     .from('subscriptions')
     .upsert({
       user_id: userId,
-      tier: active ? 'premium' : 'free',
+      tier: mapped.tier,
       provider: 'revenuecat',
       provider_customer_id: userId,
-      status: active ? 'active' : 'inactive',
+      status: mapped.status,
+      current_period_start: periodStart,
       current_period_end: periodEnd,
-      analysis_limit_monthly: active ? null : Number(Deno.env.get('FREE_ANALYSIS_LIMIT') || 5),
+      analysis_limit_monthly: mapped.tier === 'premium' ? null : Number(Deno.env.get('FREE_ANALYSIS_LIMIT') || 5),
       updated_at: new Date().toISOString()
     }, { onConflict: 'user_id' });
 

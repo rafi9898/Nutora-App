@@ -13,23 +13,98 @@ export type PurchaseResult = {
 const API_KEY_IOS = process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY || '';
 const API_KEY_ANDROID = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY || '';
 const ENTITLEMENT_ID = process.env.EXPO_PUBLIC_REVENUECAT_ENTITLEMENT_ID || 'premium';
+const FREE_ANALYSIS_LIMIT = 5;
+const PREMIUM_ANALYSIS_LIMIT = 200;
+const SUBSCRIPTION_ASSIGNED_TO_ANOTHER_ACCOUNT_ERROR = 'Ta subskrypcja jest już przypisana do innego konta. Zaloguj się na właściwe konto, aby ją przywrócić.';
 
 const currentMonth = () => new Date().toISOString().slice(0, 7);
+let isConfigured = false;
+let configurePromise: Promise<void> | null = null;
+
+const isAnonymousRevenueCatUserId = (userId?: string | null) => Boolean(userId?.startsWith('$RCAnonymous'));
+
+const getRevenueCatApiKey = () => {
+  if (Platform.OS === 'ios') return API_KEY_IOS;
+  if (Platform.OS === 'android') return API_KEY_ANDROID;
+  return '';
+};
+
+const isOwnedByAnotherIdentifiedUser = (info: CustomerInfo, currentUserId?: string) => {
+  return Boolean(
+    currentUserId &&
+    info.originalAppUserId &&
+    info.originalAppUserId !== currentUserId &&
+    !isAnonymousRevenueCatUserId(info.originalAppUserId)
+  );
+};
+
+const configurePurchases = async (appUserID?: string) => {
+  if (isConfigured) return;
+  if (configurePromise) return configurePromise;
+
+  configurePromise = Promise.resolve().then(() => {
+    Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+
+    const apiKey = getRevenueCatApiKey();
+    if (!apiKey) {
+      throw new Error(`Brak klucza RevenueCat dla platformy ${Platform.OS}.`);
+    }
+
+    Purchases.configure({ apiKey, appUserID: appUserID ?? null });
+    isConfigured = true;
+    console.log(`[RevenueCat] Skonfigurowano SDK dla platformy ${Platform.OS}${appUserID ? ` i usera ${appUserID}` : ''}.`);
+  }).catch((error) => {
+    isConfigured = false;
+    throw error;
+  }).finally(() => {
+    configurePromise = null;
+  });
+
+  return configurePromise;
+};
+
+const attachSupabaseUserAttribute = async (userId: string, email?: string | null) => {
+  await Purchases.setAttributes({ supabase_user_id: userId }).catch((error) => {
+    console.warn('[RevenueCat] Nie udało się ustawić supabase_user_id:', error);
+  });
+
+  if (email) {
+    await Purchases.setEmail(email).catch((error) => {
+      console.warn('[RevenueCat] Nie udało się ustawić email:', error);
+    });
+  }
+};
+
+const ensureRevenueCatUser = async (currentUserId?: string, email?: string | null) => {
+  await configurePurchases(currentUserId);
+
+  if (!currentUserId) return;
+
+  const appUserId = await Purchases.getAppUserID().catch(() => null);
+  if (appUserId !== currentUserId) {
+    await Purchases.logIn(currentUserId);
+  }
+
+  await attachSupabaseUserAttribute(currentUserId, email);
+
+  const confirmedAppUserId = await Purchases.getAppUserID().catch(() => null);
+  if (confirmedAppUserId !== currentUserId) {
+    throw new Error(`RevenueCat jest zalogowany jako ${confirmedAppUserId ?? 'brak'}, a powinien być ${currentUserId}.`);
+  }
+};
 
 export const mapCustomerInfoToSubscriptionState = (info: CustomerInfo, currentUserId?: string): SubscriptionState | undefined => {
   // BARDZO WAŻNE: Zabezpieczenie przed transferem (szczególnie Android)
-  if (currentUserId && info.originalAppUserId && info.originalAppUserId !== currentUserId) {
-    if (!info.originalAppUserId.startsWith('$RCAnonymous')) {
-      // Ten paragon należy do kogoś innego. Zwracamy stan expired/free żeby aplikacja nie przyznała Premium.
-      return {
-        tier: 'free',
-        analysesUsed: 0,
-        usageMonth: currentMonth(),
-        monthlyLimit: 3,
-        provider: 'revenuecat',
-        status: 'expired'
-      };
-    }
+  if (isOwnedByAnotherIdentifiedUser(info, currentUserId)) {
+    // Ten paragon należy do kogoś innego. Zwracamy stan expired/free żeby aplikacja nie przyznała Premium.
+    return {
+      tier: 'free',
+      analysesUsed: 0,
+      usageMonth: currentMonth(),
+      monthlyLimit: FREE_ANALYSIS_LIMIT,
+      provider: 'revenuecat',
+      status: 'expired'
+    };
   }
 
   const entitlement = info.entitlements.active[ENTITLEMENT_ID];
@@ -39,8 +114,8 @@ export const mapCustomerInfoToSubscriptionState = (info: CustomerInfo, currentUs
       tier: 'premium',
       analysesUsed: 0, 
       usageMonth: currentMonth(),
-      monthlyLimit: 200, 
-      provider: entitlement.store === 'app_store' ? 'apple' : entitlement.store === 'play_store' ? 'google' : 'revenuecat',
+      monthlyLimit: PREMIUM_ANALYSIS_LIMIT,
+      provider: 'revenuecat',
       status: entitlement.isActive ? 'active' : 'inactive',
       expiresAt: entitlement.expirationDate || new Date(Date.now() + 31536000000).toISOString() 
     };
@@ -52,7 +127,7 @@ export const mapCustomerInfoToSubscriptionState = (info: CustomerInfo, currentUs
       tier: 'free',
       analysesUsed: 0,
       usageMonth: currentMonth(),
-      monthlyLimit: 3, 
+      monthlyLimit: FREE_ANALYSIS_LIMIT,
       provider: 'revenuecat',
       status: 'expired'
     };
@@ -66,24 +141,21 @@ export const revenueCatService = {
     return false; // Wyłączamy tryb demo!
   },
 
-  async configure() {
-    Purchases.setLogLevel(LOG_LEVEL.DEBUG); // Przydatne do debugowania
-
-    if (Platform.OS === 'ios') {
-      if (API_KEY_IOS) {
-        Purchases.configure({ apiKey: API_KEY_IOS });
-      }
-    } else if (Platform.OS === 'android') {
-      if (API_KEY_ANDROID) {
-        Purchases.configure({ apiKey: API_KEY_ANDROID });
-      }
-    }
+  async configure(appUserID?: string) {
+    await configurePurchases(appUserID);
   },
 
-  async login(userId: string) {
+  async login(userId: string, email?: string | null) {
     try {
-      const { customerInfo, created } = await Purchases.logIn(userId);
-      console.log(`Zalogowano w RevenueCat: ${userId} (Utworzono nowy? ${created})`);
+      await configurePurchases(userId);
+      const appUserId = await Purchases.getAppUserID().catch(() => null);
+      if (appUserId !== userId) {
+        const { created } = await Purchases.logIn(userId);
+        console.log(`Zalogowano w RevenueCat: ${userId} (Utworzono nowy? ${created})`);
+      } else {
+        console.log(`RevenueCat już używa właściwego usera: ${userId}`);
+      }
+      await attachSupabaseUserAttribute(userId, email);
     } catch (e) {
       console.error("Błąd logowania w RevenueCat:", e);
     }
@@ -91,6 +163,7 @@ export const revenueCatService = {
 
   async logout() {
     try {
+      await configurePurchases();
       await Purchases.logOut();
       console.log("Wylogowano z RevenueCat.");
     } catch (e) {
@@ -100,6 +173,7 @@ export const revenueCatService = {
 
   async checkSubscriptionStatus(currentUserId?: string): Promise<SubscriptionState | null> {
     try {
+      await ensureRevenueCatUser(currentUserId);
       const customerInfo = await Purchases.getCustomerInfo();
       return mapCustomerInfoToSubscriptionState(customerInfo, currentUserId) || null;
     } catch (e) {
@@ -108,8 +182,9 @@ export const revenueCatService = {
     }
   },
 
-  async getOfferings() {
+  async getOfferings(currentUserId?: string) {
     try {
+      await ensureRevenueCatUser(currentUserId);
       const offerings = await Purchases.getOfferings();
       if (offerings.current !== null) {
         return offerings.current.availablePackages;
@@ -123,7 +198,17 @@ export const revenueCatService = {
 
   async purchasePackage(pkg: PurchasesPackage, currentUserId?: string): Promise<PurchaseResult> {
     try {
+      await ensureRevenueCatUser(currentUserId);
+      const appUserId = await Purchases.getAppUserID().catch(() => null);
+      console.log(`[RevenueCat] Start zakupu. Supabase user: ${currentUserId ?? 'brak'}, RevenueCat appUserID: ${appUserId ?? 'brak'}.`);
       const { customerInfo } = await Purchases.purchasePackage(pkg);
+      if (isOwnedByAnotherIdentifiedUser(customerInfo, currentUserId)) {
+        return {
+          success: false,
+          error: SUBSCRIPTION_ASSIGNED_TO_ANOTHER_ACCOUNT_ERROR
+        };
+      }
+
       const subState = mapCustomerInfoToSubscriptionState(customerInfo, currentUserId);
       
       if (subState && subState.status === 'active') {
@@ -142,6 +227,12 @@ export const revenueCatService = {
       if (!e.userCancelled) {
         console.warn("Błąd podczas zakupu:", e);
       }
+      if (e.code === PURCHASES_ERROR_CODE.RECEIPT_ALREADY_IN_USE_ERROR) {
+        return {
+          success: false,
+          error: SUBSCRIPTION_ASSIGNED_TO_ANOTHER_ACCOUNT_ERROR
+        };
+      }
       return {
         success: false,
         error: e.userCancelled ? 'Anulowano płatność' : e.message
@@ -159,17 +250,17 @@ export const revenueCatService = {
 
   async restorePurchases(currentUserId?: string): Promise<PurchaseResult> {
     try {
+      await ensureRevenueCatUser(currentUserId);
+      const appUserId = await Purchases.getAppUserID().catch(() => null);
+      console.log(`[RevenueCat] Start restore. Supabase user: ${currentUserId ?? 'brak'}, RevenueCat appUserID: ${appUserId ?? 'brak'}.`);
       const customerInfo = await Purchases.restorePurchases();
       
       // Strict check to prevent Android Sandbox (and other edge cases) from transferring the receipt to a new account
-      if (currentUserId && customerInfo.originalAppUserId && customerInfo.originalAppUserId !== currentUserId) {
-        // Sprawdzamy czy to nie jest przypadkiem zanonimizowane ID sprzed logowania
-        if (!customerInfo.originalAppUserId.startsWith('$RCAnonymous')) {
-          return {
-            success: false,
-            error: 'Ta subskrypcja została pierwotnie zakupiona na innym koncie. Zaloguj się na właściwe konto, aby ją przywrócić.'
-          };
-        }
+      if (isOwnedByAnotherIdentifiedUser(customerInfo, currentUserId)) {
+        return {
+          success: false,
+          error: SUBSCRIPTION_ASSIGNED_TO_ANOTHER_ACCOUNT_ERROR
+        };
       }
 
       const subState = mapCustomerInfoToSubscriptionState(customerInfo, currentUserId);
@@ -198,22 +289,7 @@ export const revenueCatService = {
       let errorMessage = e.message;
       // Sprawdzamy czy to błąd związany z zablokowaniem przenoszenia na inne konto
       if (e.code === PURCHASES_ERROR_CODE.RECEIPT_ALREADY_IN_USE_ERROR) {
-        // Fallback: W środowisku testowym czasami ten błąd wyskakuje mimo że mamy to samo konto.
-        // Sprawdźmy, czy lokalnie RevenueCat widzi aktywne Premium.
-        try {
-          const localInfo = await Purchases.getCustomerInfo();
-          const localState = mapCustomerInfoToSubscriptionState(localInfo);
-          if (localState && localState.status === 'active') {
-            return {
-              success: true,
-              subscription: localState,
-              message: 'Zakupy przywrócone (z bazy lokalnej).'
-            };
-          }
-        } catch (innerErr) {
-          // Ignoruj błąd i zwróć pierwotny
-        }
-        errorMessage = 'Ta subskrypcja jest już przypisana do innego konta. Zaloguj się na właściwe konto, aby ją przywrócić.';
+        errorMessage = SUBSCRIPTION_ASSIGNED_TO_ANOTHER_ACCOUNT_ERROR;
       }
 
       return {

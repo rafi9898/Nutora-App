@@ -19,6 +19,54 @@ export const FREE_ANALYSIS_LIMIT = 5;
 export const PREMIUM_ANALYSIS_LIMIT = 200;
 const getCurrentMonth = () => new Date().toISOString().slice(0, 7);
 
+const freeSubscriptionState = (overrides: Partial<SubscriptionState> = {}): SubscriptionState => ({
+  tier: 'free',
+  analysesUsed: 0,
+  usageMonth: getCurrentMonth(),
+  monthlyLimit: FREE_ANALYSIS_LIMIT,
+  status: 'inactive',
+  provider: 'manual',
+  ...overrides
+});
+
+const preserveSubscriptionUsage = (subscription: SubscriptionState, current?: SubscriptionState | null): SubscriptionState => ({
+  ...subscription,
+  analysesUsed: current?.analysesUsed ?? subscription.analysesUsed,
+  usageMonth: current?.usageMonth ?? subscription.usageMonth
+});
+
+const isFutureDate = (value?: string) => Boolean(value && new Date(value).getTime() > Date.now());
+
+const isConfirmedPremium = (subscription?: SubscriptionState | null) => (
+  subscription?.tier === 'premium' &&
+  subscription.status === 'active' &&
+  (!subscription.expiresAt || isFutureDate(subscription.expiresAt))
+);
+
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const waitForConfirmedPremium = async (
+  userId: string,
+  options: { syncRevenueCat?: boolean; attempts?: number; intervalMs?: number } = {}
+) => {
+  const attempts = options.attempts ?? 30;
+  const intervalMs = options.intervalMs ?? 2000;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const subscription = options.syncRevenueCat
+      ? await subscriptionService.syncRevenueCatSubscription({ confirmOnly: true }).catch((error) => {
+        console.warn('RevenueCat confirm sync failed:', error);
+        return subscriptionService.getSubscription(userId).catch(() => null);
+      })
+      : await subscriptionService.getSubscription(userId).catch(() => null);
+
+    if (isConfirmedPremium(subscription)) return subscription;
+    if (attempt < attempts - 1) await wait(intervalMs);
+  }
+
+  return null;
+};
+
 const translateError = (error: unknown, defaultMsg: string) => {
   if (!(error instanceof Error)) return defaultMsg;
   const msg = error.message.toLowerCase();
@@ -167,7 +215,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   } : mockProfile,
   meals: mockMeals,
   analysisDraft: null,
-  subscription: { tier: 'free', analysesUsed: 0, usageMonth: getCurrentMonth(), monthlyLimit: FREE_ANALYSIS_LIMIT, status: 'inactive', provider: 'demo' },
+  subscription: freeSubscriptionState({ provider: isSupabaseMode ? 'manual' : 'demo' }),
   hasOnboarded: false,
   initializeAuth: async () => {
     if (!isSupabaseMode) {
@@ -181,7 +229,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
       const user = await authService.getCurrentUser();
 
       if (!user) {
-        set({ authStatus: 'unauthenticated', authUser: null });
+        set({ authStatus: 'unauthenticated', authUser: null, subscription: freeSubscriptionState(), subscriptionStatus: 'ready', subscriptionError: null });
         return;
       }
 
@@ -196,13 +244,13 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
         meals: backendMeals ?? [],
         mealsStatus: backendMeals ? 'ready' : 'error',
         mealsError: backendMeals ? null : 'Nie udało się pobrać historii posiłków.',
-        subscription: backendSubscription ?? get().subscription,
-        subscriptionStatus: backendSubscription ? 'ready' : 'error',
-        subscriptionError: backendSubscription ? null : 'Nie udało się pobrać subskrypcji.',
+        subscription: backendSubscription ?? freeSubscriptionState(),
+        subscriptionStatus: 'ready',
+        subscriptionError: null,
         hasOnboarded: Boolean(backendProfile?.age),
         authError: null
       });
-      try { await revenueCatService.login(user.id); } catch(e) { console.warn('RC error:', e); }
+      try { await revenueCatService.login(user.id, user.email); } catch(e) { console.warn('RC error:', e); }
     } catch (error) {
       set({
         authStatus: 'unauthenticated',
@@ -239,18 +287,18 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
         profile: profileFromAuthUser(user),
         meals: [],
         mealsStatus: 'ready',
-        subscription: { tier: 'free', analysesUsed: 0, usageMonth: getCurrentMonth(), monthlyLimit: FREE_ANALYSIS_LIMIT, status: 'inactive', provider: 'manual' },
+        subscription: freeSubscriptionState(),
         subscriptionStatus: 'ready',
         hasOnboarded: true,
         authError: null
       });
 
-      try { await revenueCatService.login(user.id); } catch(e) { console.warn('RC error:', e); }
+      try { await revenueCatService.login(user.id, user.email); } catch(e) { console.warn('RC error:', e); }
 
       // Force refresh RevenueCat status to ensure UI is in sync
       const rcState = await revenueCatService.checkSubscriptionStatus(user.id);
       if (rcState) {
-        if (rcState.status === 'active') {
+        if (rcState.status === 'active' && !isSupabaseMode) {
           set({ subscription: { ...rcState, analysesUsed: get().subscription.analysesUsed, usageMonth: get().subscription.usageMonth } });
         } else if (rcState.status === 'expired' && get().subscription.tier === 'premium') {
           const currentSub = get().subscription;
@@ -297,18 +345,18 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
         meals: user ? backendMeals ?? [] : get().meals,
         mealsStatus: user ? backendMeals ? 'ready' : 'error' : get().mealsStatus,
         mealsError: user && !backendMeals ? 'Nie udało się pobrać historii posiłków.' : null,
-        subscription: backendSubscription ?? get().subscription,
-        subscriptionStatus: backendSubscription ? 'ready' : get().subscriptionStatus,
-        subscriptionError: backendSubscription ? null : get().subscriptionError,
+        subscription: backendSubscription ?? freeSubscriptionState(),
+        subscriptionStatus: 'ready',
+        subscriptionError: null,
         authError: null
       });
 
       if (user) {
-        try { await revenueCatService.login(user.id); } catch(e) { console.warn('RC error:', e); }
+        try { await revenueCatService.login(user.id, user.email); } catch(e) { console.warn('RC error:', e); }
         // Force refresh RevenueCat status to ensure UI is in sync
         const rcState = await revenueCatService.checkSubscriptionStatus(user.id);
         if (rcState) {
-          if (rcState.status === 'active') {
+          if (rcState.status === 'active' && !isSupabaseMode) {
             set({ subscription: { ...rcState, analysesUsed: get().subscription.analysesUsed, usageMonth: get().subscription.usageMonth } });
           } else if (rcState.status === 'expired' && get().subscription.tier === 'premium') {
             const currentSub = get().subscription;
@@ -356,19 +404,19 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
         meals: backendMeals ?? [],
         mealsStatus: backendMeals ? 'ready' : 'error',
         mealsError: backendMeals ? null : 'Nie udało się pobrać historii posiłków.',
-        subscription: backendSubscription ?? get().subscription,
-        subscriptionStatus: backendSubscription ? 'ready' : get().subscriptionStatus,
-        subscriptionError: backendSubscription ? null : get().subscriptionError,
+        subscription: backendSubscription ?? freeSubscriptionState(),
+        subscriptionStatus: 'ready',
+        subscriptionError: null,
         hasOnboarded: Boolean(backendProfile?.age),
         authError: null
       });
 
-      try { await revenueCatService.login(user.id); } catch(e) { console.warn('RC error:', e); }
+      try { await revenueCatService.login(user.id, user.email); } catch(e) { console.warn('RC error:', e); }
 
       // Force refresh RevenueCat status to ensure UI is in sync
       const rcState = await revenueCatService.checkSubscriptionStatus(user.id);
       if (rcState) {
-        if (rcState.status === 'active') {
+        if (rcState.status === 'active' && !isSupabaseMode) {
           set({ subscription: { ...rcState, analysesUsed: get().subscription.analysesUsed, usageMonth: get().subscription.usageMonth } });
         } else if (rcState.status === 'expired' && get().subscription.tier === 'premium') {
           const currentSub = get().subscription;
@@ -409,7 +457,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
       meals: isSupabaseMode ? [] : mockMeals,
       mealsStatus: 'ready',
       mealsError: null,
-      subscription: isSupabaseMode ? { tier: 'free', analysesUsed: 0, usageMonth: getCurrentMonth(), monthlyLimit: FREE_ANALYSIS_LIMIT, status: 'inactive', provider: 'manual' } : { tier: 'free', analysesUsed: 0, usageMonth: getCurrentMonth(), monthlyLimit: FREE_ANALYSIS_LIMIT, status: 'inactive', provider: 'demo' },
+      subscription: freeSubscriptionState({ provider: isSupabaseMode ? 'manual' : 'demo' }),
       subscriptionStatus: 'ready',
       subscriptionError: null,
       analysisDraft: null,
@@ -452,9 +500,10 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
 
     try {
       const subscription = await subscriptionService.getSubscription(userId);
-      if (subscription) set({ subscription, subscriptionStatus: 'ready', subscriptionError: null });
+      set({ subscription: subscription ?? freeSubscriptionState(), subscriptionStatus: 'ready', subscriptionError: null });
     } catch (error) {
       set({
+        subscription: freeSubscriptionState(),
         subscriptionStatus: 'error',
         subscriptionError: error instanceof Error ? error.message : 'Nie udało się pobrać subskrypcji.'
       });
@@ -669,7 +718,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
 
     set({
       analysisDraft: draft,
-      subscription: backendSubscription ?? { ...state.subscription, analysesUsed: currentUsage + 1, usageMonth: currentMonth }
+      subscription: backendSubscription ?? freeSubscriptionState({ analysesUsed: currentUsage + 1, usageMonth: currentMonth })
     });
     return draft;
   },
@@ -700,7 +749,7 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     const backendSubscription = isSupabaseMode ? await subscriptionService.getSubscription(userId).catch(() => null) : null;
 
     set({
-      subscription: backendSubscription ?? { ...state.subscription, analysesUsed: state.subscription.tier === 'free' ? currentUsage + 1 : currentUsage, usageMonth: currentMonth }
+      subscription: backendSubscription ?? freeSubscriptionState({ analysesUsed: state.subscription.tier === 'free' ? currentUsage + 1 : currentUsage, usageMonth: currentMonth })
     });
 
     return result;
@@ -733,7 +782,13 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   },
   purchasePackage: async (pkg) => {
     set({ subscriptionStatus: 'loading', subscriptionError: null });
-    const currentUserId = get().authUser?.id ?? get().profile.userId;
+    const authUserId = get().authUser?.id;
+    if (isSupabaseMode && !authUserId) {
+      set({ subscriptionStatus: 'error', subscriptionError: 'Zaloguj się, aby zarządzać subskrypcją.' });
+      return false;
+    }
+
+    const currentUserId = authUserId ?? get().profile.userId;
     const result = await revenueCatService.purchasePackage(pkg, currentUserId);
 
     if (!result.success || !result.subscription) {
@@ -742,10 +797,18 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     }
 
     if (isSupabaseMode && supabase) {
-      const userId = get().authUser?.id ?? get().profile.userId;
-      // Zapisujemy na backendzie informacje o premium. W przyszłości można to robić przez webhooki.
-      const subscription = await subscriptionService.setSubscriptionTier(userId, 'premium').catch(() => result.subscription ?? null);
-      set({ subscription: subscription ?? result.subscription, subscriptionStatus: 'ready', subscriptionError: null });
+      const existingSub = await waitForConfirmedPremium(currentUserId, { syncRevenueCat: true });
+      if (!existingSub) {
+        set({
+          subscription: freeSubscriptionState(),
+          subscriptionStatus: 'error',
+          subscriptionError: 'Płatność przeszła, ale RevenueCat jeszcze nie potwierdził jej w bazie. Otwórz ten ekran za chwilę albo użyj Przywróć zakup.'
+        });
+        return false;
+      }
+
+      // Premium w bazie nadaje wyłącznie RevenueCat webhook. Klient aktualizuje tylko lokalny UI.
+      set({ subscription: preserveSubscriptionUsage(result.subscription, existingSub), subscriptionStatus: 'ready', subscriptionError: null });
       return true;
     }
 
@@ -754,7 +817,13 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   },
   purchasePremium: async (plan = 'monthly') => {
     set({ subscriptionStatus: 'loading', subscriptionError: null });
-    const currentUserId = get().authUser?.id ?? get().profile.userId;
+    const authUserId = get().authUser?.id;
+    if (isSupabaseMode && !authUserId) {
+      set({ subscriptionStatus: 'error', subscriptionError: 'Zaloguj się, aby zarządzać subskrypcją.' });
+      return false;
+    }
+
+    const currentUserId = authUserId ?? get().profile.userId;
     const result = await revenueCatService.purchasePremium(plan, currentUserId);
 
     if (!result.success || !result.subscription) {
@@ -763,9 +832,18 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     }
 
     if (isSupabaseMode && supabase) {
-      const userId = get().authUser?.id ?? get().profile.userId;
-      const subscription = await subscriptionService.setSubscriptionTier(userId, 'premium', plan).catch(() => result.subscription ?? null);
-      set({ subscription: subscription ?? result.subscription, subscriptionStatus: 'ready', subscriptionError: null });
+      const existingSub = await waitForConfirmedPremium(currentUserId, { syncRevenueCat: true });
+      if (!existingSub) {
+        set({
+          subscription: freeSubscriptionState(),
+          subscriptionStatus: 'error',
+          subscriptionError: 'Płatność przeszła, ale RevenueCat jeszcze nie potwierdził jej w bazie. Otwórz ten ekran za chwilę albo użyj Przywróć zakup.'
+        });
+        return false;
+      }
+
+      // Premium w bazie nadaje wyłącznie RevenueCat webhook. Klient aktualizuje tylko lokalny UI.
+      set({ subscription: preserveSubscriptionUsage(result.subscription, existingSub), subscriptionStatus: 'ready', subscriptionError: null });
       return true;
     }
 
@@ -774,13 +852,18 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
   },
   restorePurchases: async () => {
     set({ subscriptionStatus: 'loading', subscriptionError: null });
-    const currentUserId = get().authUser?.id ?? get().profile.userId;
+    const authUserId = get().authUser?.id;
+    if (isSupabaseMode && !authUserId) {
+      set({ subscriptionStatus: 'error', subscriptionError: 'Zaloguj się, aby przywrócić subskrypcję.' });
+      return false;
+    }
+
+    const currentUserId = authUserId ?? get().profile.userId;
     const result = await revenueCatService.restorePurchases(currentUserId);
 
     if (result.subscription?.status === 'expired') {
-      const userId = get().authUser?.id ?? get().profile.userId;
-      if (isSupabaseMode && supabase && userId) {
-        await subscriptionService.setSubscriptionTier(userId, 'free').catch(() => null);
+      if (isSupabaseMode && supabase) {
+        await subscriptionService.setSubscriptionTier(currentUserId, 'free').catch(() => null);
       }
       set({ 
         subscription: { ...get().subscription, tier: 'free', status: 'inactive' },
@@ -796,18 +879,19 @@ export const useAppStore = create<AppState>()(persist((set, get) => ({
     }
 
     if (isSupabaseMode && supabase) {
-      const userId = get().authUser?.id ?? get().profile.userId;
       // Pobieramy istniejącą subskrypcję, żeby zachować analyses_used i usage_month
-      const existingSub = await subscriptionService.getSubscription(userId).catch(() => null);
-      const subscription = await subscriptionService.setSubscriptionTier(userId, 'premium').catch(() => result.subscription ?? null);
-      
-      // Zachowujemy dane o zużyciu z istniejącej subskrypcji (jeśli istnieje)
-      const finalSub = subscription ?? result.subscription;
-      if (finalSub && existingSub) {
-        finalSub.analysesUsed = existingSub.analysesUsed;
-        finalSub.usageMonth = existingSub.usageMonth;
+      const existingSub = await waitForConfirmedPremium(currentUserId, { syncRevenueCat: true, attempts: 15, intervalMs: 2000 });
+      if (!existingSub) {
+        set({
+          subscription: freeSubscriptionState(),
+          subscriptionStatus: 'error',
+          subscriptionError: 'Ta subskrypcja nie jest przypisana do tego konta.'
+        });
+        return false;
       }
-      set({ subscription: finalSub!, subscriptionStatus: 'ready', subscriptionError: null });
+
+      // Premium w bazie nadaje wyłącznie RevenueCat webhook. Klient aktualizuje tylko lokalny UI.
+      set({ subscription: preserveSubscriptionUsage(result.subscription, existingSub), subscriptionStatus: 'ready', subscriptionError: null });
       return true;
     }
 

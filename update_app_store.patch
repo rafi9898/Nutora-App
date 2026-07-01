@@ -1,0 +1,15 @@
+--- src/store/app-store.ts
++++ src/store/app-store.ts
+@@ -288,8 +288,14 @@
+       });
+ 
+       if (user) {
+         try { await revenueCatService.login(user.id); } catch(e) { console.warn('RC error:', e); }
++        // Odświeżenie statusu z RevenueCat po zalogowaniu, żeby zapobiec bugom z UI
++        const rcState = await revenueCatService.checkSubscriptionStatus();
++        if (rcState && rcState.status === 'active') {
++            set({ subscription: { ...rcState, analysesUsed: get().subscription.analysesUsed, usageMonth: get().subscription.usageMonth } });
++        }
+       }
+ 
+       return Boolean(user);

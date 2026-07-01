@@ -16,6 +16,7 @@ type SubscriptionRow = {
   analyses_used_month: number;
   analysis_limit_monthly: number | null;
   usage_month: string;
+  current_period_end?: string | null;
 };
 
 type AiMealAnalysis = {
@@ -117,6 +118,37 @@ const currentMonth = () => new Date().toISOString().slice(0, 7);
 const freeAnalysisLimit = () => Number(Deno.env.get('FREE_ANALYSIS_LIMIT') || 5);
 const premiumAnalysisLimit = () => Number(Deno.env.get('PREMIUM_ANALYSIS_LIMIT') || 200);
 
+const isExpiredPremium = (subscription: SubscriptionRow) => {
+  return Boolean(
+    subscription.tier === 'premium' &&
+    subscription.status === 'active' &&
+    subscription.current_period_end &&
+    new Date(subscription.current_period_end).getTime() <= Date.now()
+  );
+};
+
+const expireSubscriptionIfNeeded = async (subscription: SubscriptionRow) => {
+  if (!isExpiredPremium(subscription)) return subscription;
+
+  const supabase = createLogClient();
+  if (!supabase) throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured.');
+
+  const { data, error } = await supabase
+    .from('subscriptions')
+    .update({
+      tier: 'free',
+      status: 'expired',
+      analysis_limit_monthly: freeAnalysisLimit(),
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', subscription.id)
+    .select()
+    .single<SubscriptionRow>();
+
+  if (error) throw error;
+  return data;
+};
+
 const getOrCreateSubscription = async (userId: string, deviceId: string | null) => {
   const supabase = createLogClient();
   if (!supabase) throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured.');
@@ -161,16 +193,18 @@ const getOrCreateSubscription = async (userId: string, deviceId: string | null) 
     return data;
   }
 
-  if (existing.usage_month !== month) {
+  const subscription = await expireSubscriptionIfNeeded(existing);
+
+  if (subscription.usage_month !== month) {
     const { data, error } = await supabase
       .from('subscriptions')
       .update({
         analyses_used_month: 0,
-        analysis_limit_monthly: existing.tier === 'premium' ? premiumAnalysisLimit() : existing.analysis_limit_monthly ?? freeAnalysisLimit(),
+        analysis_limit_monthly: subscription.tier === 'premium' ? premiumAnalysisLimit() : subscription.analysis_limit_monthly ?? freeAnalysisLimit(),
         usage_month: month,
         updated_at: new Date().toISOString()
       })
-      .eq('id', existing.id)
+      .eq('id', subscription.id)
       .select()
       .single<SubscriptionRow>();
 
@@ -178,7 +212,7 @@ const getOrCreateSubscription = async (userId: string, deviceId: string | null) 
     return data;
   }
 
-  return existing;
+  return subscription;
 };
 
 const checkAnalysisAllowance = async (userId: string, deviceId: string | null) => {

@@ -140,8 +140,14 @@ create policy "Users can read own subscription" on public.subscriptions
 
 -- TODO: In production, subscription writes should be handled by RevenueCat
 -- webhooks / service-role backend code, not by regular mobile clients.
-create policy "Users can bootstrap own free subscription" on public.subscriptions
-  for insert with check (auth.uid() = user_id and tier = 'free');
+create policy "Users can insert own free subscription" on public.subscriptions
+  for insert with check (
+    auth.uid() = user_id
+    and tier = 'free'
+    and status = 'inactive'
+    and (provider is null or provider = 'manual')
+    and (analysis_limit_monthly is null or analysis_limit_monthly <= 5)
+  );
 
 create or replace function public.handle_new_auth_user()
 returns trigger
@@ -216,4 +222,3 @@ create index off_products_search_idx on public.off_products using gin(search_tok
 alter table public.off_products enable row level security;
 create policy "Anyone can read off_products" on public.off_products
   for select using (true);
-

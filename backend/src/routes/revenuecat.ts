@@ -6,7 +6,7 @@ import { updateRevenueCatSubscription } from '../services/subscriptions.js';
 const revenueCatEventSchema = z.object({
   event: z.object({
     type: z.string(),
-    app_user_id: z.string(),
+    app_user_id: z.string().optional(),
     aliases: z.array(z.string()).optional(),
     original_app_user_id: z.string().optional(),
     subscriber_attributes: z.record(z.unknown()).optional(),
@@ -23,13 +23,33 @@ const getSecret = (request: FastifyRequest) => {
   return Array.isArray(header) ? header[0] : header;
 };
 
-const eventToStatus = (type: string) => {
-  if (['INITIAL_PURCHASE', 'RENEWAL', 'UNCANCELLATION', 'PRODUCT_CHANGE'].includes(type)) {
+const hasFutureExpiration = (expirationAtMs?: number | null) => {
+  return typeof expirationAtMs === 'number' && expirationAtMs > Date.now();
+};
+
+const isSupabaseUserId = (value?: string | null) => Boolean(
+  value?.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)
+);
+
+const getUserId = (event: z.infer<typeof revenueCatEventSchema>['event']) => {
+  if (isSupabaseUserId(event.app_user_id)) return event.app_user_id;
+  if (isSupabaseUserId(event.original_app_user_id)) return event.original_app_user_id;
+  return null;
+};
+
+const eventToStatus = (type: string, expirationAtMs?: number | null) => {
+  if (['INITIAL_PURCHASE', 'RENEWAL', 'UNCANCELLATION', 'PRODUCT_CHANGE', 'NON_RENEWING_PURCHASE'].includes(type)) {
     return { tier: 'premium' as const, status: 'active' as const };
   }
 
-  if (['CANCELLATION', 'EXPIRATION', 'BILLING_ISSUE'].includes(type)) {
-    return { tier: 'free' as const, status: type === 'BILLING_ISSUE' ? 'inactive' as const : 'expired' as const };
+  if (type === 'CANCELLATION' || type === 'BILLING_ISSUE') {
+    return hasFutureExpiration(expirationAtMs)
+      ? { tier: 'premium' as const, status: 'active' as const }
+      : { tier: 'free' as const, status: 'inactive' as const };
+  }
+
+  if (type === 'EXPIRATION') {
+    return { tier: 'free' as const, status: 'expired' as const };
   }
 
   return { tier: 'free' as const, status: 'inactive' as const };
@@ -49,11 +69,23 @@ export const registerRevenueCatRoutes = async (app: FastifyInstance) => {
     try {
       const payload = revenueCatEventSchema.parse(request.body);
       const event = payload.event;
-      const mapped = eventToStatus(event.type);
+      const userId = getUserId(event);
+
+      if (!userId) {
+        return {
+          ok: true,
+          skipped: true,
+          reason: 'missing_supabase_user_id',
+          appUserId: event.app_user_id ?? null,
+          originalAppUserId: event.original_app_user_id ?? null
+        };
+      }
+
+      const mapped = eventToStatus(event.type, event.expiration_at_ms);
 
       const result = await updateRevenueCatSubscription({
-        userId: event.app_user_id,
-        customerId: event.original_app_user_id ?? event.app_user_id,
+        userId,
+        customerId: event.original_app_user_id ?? event.app_user_id ?? userId,
         tier: mapped.tier,
         status: mapped.status,
         currentPeriodStart: msToIso(event.purchased_at_ms),

@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "pro.nutora.app",
-      "buildNumber": "20",
+      "buildNumber": "24",
       "associatedDomains": [
         "applinks:nutora.pro",
         "applinks:nutora.pro"
@@ -33,7 +33,7 @@
     },
     "android": {
       "package": "pro.nutora.app",
-      "versionCode": 12,
+      "versionCode": 16,
       "intentFilters": [
         {
           "action": "VIEW",

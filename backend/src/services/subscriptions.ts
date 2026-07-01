@@ -8,9 +8,38 @@ type SubscriptionRow = {
   analyses_used_month: number;
   analysis_limit_monthly: number | null;
   usage_month: string;
+  current_period_end?: string | null;
 };
 
 const currentMonth = () => new Date().toISOString().slice(0, 7);
+
+const isExpiredPremium = (subscription: SubscriptionRow) => {
+  return Boolean(
+    subscription.tier === 'premium' &&
+    subscription.status === 'active' &&
+    subscription.current_period_end &&
+    new Date(subscription.current_period_end).getTime() <= Date.now()
+  );
+};
+
+const expireSubscription = async (subscription: SubscriptionRow): Promise<SubscriptionRow> => {
+  if (!supabaseAdmin || !isExpiredPremium(subscription)) return subscription;
+
+  const { data, error } = await supabaseAdmin
+    .from('subscriptions')
+    .update({
+      tier: 'free',
+      status: 'expired',
+      analysis_limit_monthly: config.FREE_ANALYSIS_LIMIT,
+      updated_at: new Date().toISOString()
+    })
+    .eq('user_id', subscription.user_id)
+    .select('user_id,tier,status,analyses_used_month,analysis_limit_monthly,usage_month,current_period_end')
+    .single<SubscriptionRow>();
+
+  if (error) throw error;
+  return data;
+};
 
 export const ensureAnalysisAllowance = async (userId: string) => {
   if (!supabaseAdmin) {
@@ -24,7 +53,7 @@ export const ensureAnalysisAllowance = async (userId: string) => {
   const month = currentMonth();
   const { data, error } = await supabaseAdmin
     .from('subscriptions')
-    .select('user_id,tier,status,analyses_used_month,analysis_limit_monthly,usage_month')
+    .select('user_id,tier,status,analyses_used_month,analysis_limit_monthly,usage_month,current_period_end')
     .eq('user_id', userId)
     .maybeSingle<SubscriptionRow>();
 
@@ -49,12 +78,14 @@ export const ensureAnalysisAllowance = async (userId: string) => {
     return { allowed: true, remaining: inserted.analysis_limit_monthly ?? config.FREE_ANALYSIS_LIMIT };
   }
 
-  if (data.tier === 'premium' && data.status === 'active') {
+  const subscription = await expireSubscription(data);
+
+  if (subscription.tier === 'premium' && subscription.status === 'active') {
     return { allowed: true, remaining: null };
   }
 
-  const used = data.usage_month === month ? data.analyses_used_month : 0;
-  const limit = data.analysis_limit_monthly ?? config.FREE_ANALYSIS_LIMIT;
+  const used = subscription.usage_month === month ? subscription.analyses_used_month : 0;
+  const limit = subscription.analysis_limit_monthly ?? config.FREE_ANALYSIS_LIMIT;
   return { allowed: used < limit, remaining: Math.max(limit - used, 0) };
 };
 
@@ -64,13 +95,15 @@ export const incrementAnalysisUsage = async (userId: string) => {
   const month = currentMonth();
   const { data } = await supabaseAdmin
     .from('subscriptions')
-    .select('tier,status,analyses_used_month,usage_month')
+    .select('user_id,tier,status,analyses_used_month,analysis_limit_monthly,usage_month,current_period_end')
     .eq('user_id', userId)
-    .maybeSingle<Pick<SubscriptionRow, 'tier' | 'status' | 'analyses_used_month' | 'usage_month'>>();
+    .maybeSingle<SubscriptionRow>();
 
-  if (!data || data.tier === 'premium') return;
+  if (!data) return;
+  const subscription = await expireSubscription(data);
+  if (subscription.tier === 'premium') return;
 
-  const nextUsed = data.usage_month === month ? data.analyses_used_month + 1 : 1;
+  const nextUsed = subscription.usage_month === month ? subscription.analyses_used_month + 1 : 1;
   await supabaseAdmin
     .from('subscriptions')
     .update({ analyses_used_month: nextUsed, usage_month: month, updated_at: new Date().toISOString() })

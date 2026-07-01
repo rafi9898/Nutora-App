@@ -19,6 +19,7 @@ export type SocialProvider = 'google' | 'facebook';
 
 
 const getOAuthRedirectUrl = () => AuthSession.makeRedirectUri({ path: 'auth/callback' });
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export const authService = {
   async register({ email, password, name }: RegisterInput) {
@@ -90,7 +91,11 @@ export const authService = {
     const browserOptions = Platform.OS === 'android' ? { showInRecents: false, createTask: false } : {};
     const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo, browserOptions);
 
-    if (result.type !== 'success') return null;
+    if (result.type !== 'success') {
+      await wait(300);
+      const { data: currentData } = await supabase.auth.getUser();
+      return currentData.user ?? null;
+    }
 
     const parsedUrl = Linking.parse(result.url);
     const errorParam = parsedUrl.queryParams?.error as string | undefined;
@@ -104,7 +109,12 @@ export const authService = {
 
     const { data: sessionData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
 
-    if (exchangeError) throw exchangeError;
+    if (exchangeError) {
+      await wait(300);
+      const { data: currentData, error: currentError } = await supabase.auth.getUser();
+      if (!currentError && currentData.user) return currentData.user;
+      throw exchangeError;
+    }
 
     // TODO: Ensure user_profiles exists after social login via DB trigger or
     // backend function. The SQL schema already proposes an auth trigger.

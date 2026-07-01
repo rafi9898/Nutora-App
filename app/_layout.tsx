@@ -6,6 +6,8 @@ import { useAppStore } from '@/src/store/app-store';
 
 import { revenueCatService, mapCustomerInfoToSubscriptionState } from '@/src/services/payments/revenuecat-service';
 import { getSupabaseClient, isSupabaseConfigured } from '@/src/lib/supabase';
+import { isSupabaseMode } from '@/src/config/env';
+import { subscriptionService } from '@/src/services/backend/subscription-service';
 import { router } from 'expo-router';
 import * as Linking from 'expo-linking';
 import Purchases from 'react-native-purchases';
@@ -21,10 +23,10 @@ export default function RootLayout() {
       await initializeAuth();
       
       // 2. Następnie konfigurujemy RevenueCat i logujemy usera, żeby nie był anonimowy
-      await revenueCatService.configure();
       const authUser = useAppStore.getState().authUser;
+      await revenueCatService.configure(authUser?.id);
       if (authUser?.id) {
-        await revenueCatService.login(authUser.id);
+        await revenueCatService.login(authUser.id, authUser.email);
       }
       
       // 3. Nasłuchiwacz na zmiany – TYLKO podwyższa status, nigdy nie degraduje
@@ -32,9 +34,16 @@ export default function RootLayout() {
         const currentUserId = useAppStore.getState().authUser?.id;
         const subState = mapCustomerInfoToSubscriptionState(info, currentUserId);
         if (subState) {
-          // RevenueCat potwierdza premium → aktualizuj lokalny stan (zachowaj zużycie)
-          const currentSub = useAppStore.getState().subscription;
-          useAppStore.setState({ subscription: { ...subState, analysesUsed: currentSub.analysesUsed, usageMonth: currentSub.usageMonth } });
+          void (async () => {
+            const currentSub = useAppStore.getState().subscription;
+            if (subState.status === 'active' && isSupabaseMode && !currentUserId) return;
+            if (subState.status === 'active' && isSupabaseMode && currentUserId) {
+              const backendSub = await subscriptionService.getSubscription(currentUserId).catch(() => null);
+              if (backendSub?.tier !== 'premium' || backendSub.status !== 'active') return;
+            }
+            // RevenueCat potwierdza premium → aktualizuj lokalny stan (zachowaj zużycie)
+            useAppStore.setState({ subscription: { ...subState, analysesUsed: currentSub.analysesUsed, usageMonth: currentSub.usageMonth } });
+          })();
         }
         // Jeśli RC nie widzi entitlementu → NIE degradujemy!
         // Supabase jest źródłem prawdy. Degradacja tylko przez webhooks serwera.
@@ -53,6 +62,11 @@ export default function RootLayout() {
           }
           useAppStore.setState({ subscription: { ...finalSubState, analysesUsed: currentSub.analysesUsed, usageMonth: currentSub.usageMonth } });
         } else if (finalSubState.status === 'active') {
+          if (isSupabaseMode && !currentUserIdLayout) return;
+          if (isSupabaseMode && currentUserIdLayout) {
+            const backendSub = await subscriptionService.getSubscription(currentUserIdLayout).catch(() => null);
+            if (backendSub?.tier !== 'premium' || backendSub.status !== 'active') return;
+          }
           // Podwyższamy na premium lub aktualizujemy
           useAppStore.setState({ subscription: { ...finalSubState, analysesUsed: currentSub.analysesUsed, usageMonth: currentSub.usageMonth } });
         }
@@ -99,6 +113,9 @@ export default function RootLayout() {
       const urlSub = Linking.addEventListener('url', ({ url }) => handleDeepLink(url));
 
       const { data } = supabase.auth.onAuthStateChange((event) => {
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          void useAppStore.getState().initializeAuth();
+        }
         if (event === 'PASSWORD_RECOVERY') {
           router.replace('/update-password');
         }

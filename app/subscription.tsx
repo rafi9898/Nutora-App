@@ -15,6 +15,7 @@ export default function SubscriptionScreen() {
   const getAnalysesUsed = useAppStore((state) => state.getAnalysesUsed);
   const subscriptionStatus = useAppStore((state) => state.subscriptionStatus);
   const subscriptionError = useAppStore((state) => state.subscriptionError);
+  const authUserId = useAppStore((state) => state.authUser?.id);
   const purchasePackage = useAppStore((state) => state.purchasePackage);
   const restorePurchases = useAppStore((state) => state.restorePurchases);
   
@@ -33,7 +34,14 @@ export default function SubscriptionScreen() {
   useEffect(() => {
     async function loadPackages() {
       setIsFetchingPackages(true);
-      const availablePackages = await revenueCatService.getOfferings();
+      if (!authUserId) {
+        setPackages([]);
+        setSelectedPackage(null);
+        setIsFetchingPackages(false);
+        return;
+      }
+
+      const availablePackages = await revenueCatService.getOfferings(authUserId);
       setPackages(availablePackages);
       
       // Domyślnie zaznacz pakiet roczny (najbardziej opłacalny)
@@ -46,7 +54,7 @@ export default function SubscriptionScreen() {
       setIsFetchingPackages(false);
     }
     loadPackages();
-  }, []);
+  }, [authUserId]);
 
   const buy = async () => {
     if (!selectedPackage) return;
