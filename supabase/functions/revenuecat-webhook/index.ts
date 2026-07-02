@@ -36,6 +36,8 @@ const isSupabaseUserId = (value?: string | null) => Boolean(
 const getUserId = (event?: RevenueCatEvent['event']) => {
   if (isSupabaseUserId(event?.app_user_id)) return event?.app_user_id;
   if (isSupabaseUserId(event?.original_app_user_id)) return event?.original_app_user_id;
+  const aliasedUserId = event?.aliases?.find((alias) => isSupabaseUserId(alias));
+  if (aliasedUserId) return aliasedUserId;
   return null;
 };
 
@@ -88,7 +90,8 @@ serve(async (request) => {
       ignored: true,
       reason: 'missing_supabase_user_id',
       app_user_id: event?.app_user_id ?? null,
-      original_app_user_id: event?.original_app_user_id ?? null
+      original_app_user_id: event?.original_app_user_id ?? null,
+      aliases: event?.aliases ?? []
     });
   }
 
@@ -116,7 +119,18 @@ serve(async (request) => {
       updated_at: new Date().toISOString()
     }, { onConflict: 'user_id' });
 
-  if (error) return json({ error: error.message }, 500);
+  if (error) {
+    if (error.code === '23503') {
+      return json({
+        received: true,
+        ignored: true,
+        reason: 'supabase_user_not_found',
+        user_id: userId
+      });
+    }
+
+    return json({ error: error.message }, 500);
+  }
 
   return json({ received: true });
 });

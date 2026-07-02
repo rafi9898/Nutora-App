@@ -34,6 +34,8 @@ const isSupabaseUserId = (value?: string | null) => Boolean(
 const getUserId = (event: z.infer<typeof revenueCatEventSchema>['event']) => {
   if (isSupabaseUserId(event.app_user_id)) return event.app_user_id;
   if (isSupabaseUserId(event.original_app_user_id)) return event.original_app_user_id;
+  const aliasedUserId = event.aliases?.find((alias) => isSupabaseUserId(alias));
+  if (aliasedUserId) return aliasedUserId;
   return null;
 };
 
@@ -77,7 +79,8 @@ export const registerRevenueCatRoutes = async (app: FastifyInstance) => {
           skipped: true,
           reason: 'missing_supabase_user_id',
           appUserId: event.app_user_id ?? null,
-          originalAppUserId: event.original_app_user_id ?? null
+          originalAppUserId: event.original_app_user_id ?? null,
+          aliases: event.aliases ?? []
         };
       }
 
@@ -85,7 +88,7 @@ export const registerRevenueCatRoutes = async (app: FastifyInstance) => {
 
       const result = await updateRevenueCatSubscription({
         userId,
-        customerId: event.original_app_user_id ?? event.app_user_id ?? userId,
+        customerId: userId,
         tier: mapped.tier,
         status: mapped.status,
         currentPeriodStart: msToIso(event.purchased_at_ms),

@@ -134,6 +134,9 @@ export const updateRevenueCatSubscription = async (input: {
       updated_at: new Date().toISOString()
     }, { onConflict: 'user_id' });
 
-  if (error) throw error;
+  if (error) {
+    if (error.code === '23503') return { skipped: true, reason: 'supabase_user_not_found' };
+    throw error;
+  }
   return { skipped: false };
 };
